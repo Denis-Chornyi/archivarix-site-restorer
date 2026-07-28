@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#d9ff43"/>
+  <path d="M91 122h330v268H91z" fill="#101214"/>
+  <path d="M115 148h282v42H115z" fill="#d9ff43"/>
+  <circle cx="137" cy="169" r="8" fill="#101214"/>
+  <circle cx="163" cy="169" r="8" fill="#101214"/>
+  <circle cx="189" cy="169" r="8" fill="#101214"/>
+  <text x="256" y="320" text-anchor="middle" fill="#f4f6f8" font-family="Arial,sans-serif" font-size="118" font-weight="900">773</text>
+  <text x="370" y="258" fill="#d9ff43" font-family="Arial,sans-serif" font-size="45" font-weight="900">™</text>
+</svg>

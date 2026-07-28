@@ -1,0 +1,19 @@
+# Dependencies and temporary files
+node_modules/
+*.log
+*.tmp
+*.temp
+
+# Local application state
+settings.json
+asset-vault/
+restored-sites/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Machine-specific launchers
+*.lnk
