@@ -7,17 +7,25 @@ const crypto = require("crypto");
 const os = require("os");
 const { spawn, spawnSync } = require("child_process");
 
-const HOST = process.env.HOST || "127.0.0.1";
+const HOST =
+  process.env.RENDER || process.env.NODE_ENV === "production"
+    ? "0.0.0.0"
+    : "127.0.0.1";
 const PORT = Number(process.env.PORT || 4321);
 const ROOT = __dirname;
 const PUBLIC_ROOT = path.join(ROOT, "public");
 const DEFAULT_OUTPUT_ROOT = path.join(ROOT, "restored-sites");
 const SETTINGS_FILE = path.join(ROOT, "settings.json");
 let appSettings = loadSettingsFile();
-const currentDeviceFingerprint = crypto.createHash("sha256")
+const currentDeviceFingerprint = crypto
+  .createHash("sha256")
   .update(`${os.hostname()}|${os.platform()}|${os.homedir()}`)
-  .digest("hex").slice(0, 24);
-if (!appSettings.deviceId || appSettings.deviceFingerprint !== currentDeviceFingerprint) {
+  .digest("hex")
+  .slice(0, 24);
+if (
+  !appSettings.deviceId ||
+  appSettings.deviceFingerprint !== currentDeviceFingerprint
+) {
   appSettings.deviceId = crypto.randomUUID();
   appSettings.deviceFingerprint = currentDeviceFingerprint;
   appSettings.syncDeviceName = os.hostname();
@@ -40,7 +48,10 @@ let librarySyncState = {
 
 function loadSettingsFile() {
   try {
-    return { ...defaultSettings(), ...JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) };
+    return {
+      ...defaultSettings(),
+      ...JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")),
+    };
   } catch {
     return defaultSettings();
   }
@@ -88,33 +99,55 @@ function configuredOutputRoot() {
 }
 
 function storageRoots() {
-  return [...new Set([configuredOutputRoot(), OUTPUT_ROOT, DEFAULT_OUTPUT_ROOT].map((root) => path.resolve(root)))];
+  return [
+    ...new Set(
+      [configuredOutputRoot(), OUTPUT_ROOT, DEFAULT_OUTPUT_ROOT].map((root) =>
+        path.resolve(root),
+      ),
+    ),
+  ];
 }
 
 function saveSettings(next) {
   const normalized = {
     outputRoot: String(next.outputRoot || "").trim(),
-    completeness: ["quick", "balanced", "maximum"].includes(next.completeness) ? next.completeness : "maximum",
+    completeness: ["quick", "balanced", "maximum"].includes(next.completeness)
+      ? next.completeness
+      : "maximum",
     limit: Math.max(10, Math.min(10000, Number(next.limit) || 2000)),
     concurrency: Math.max(1, Math.min(6, Number(next.concurrency) || 3)),
     createZip: next.createZip !== false,
     useAssetCache: next.useAssetCache !== false,
     allowCdnFallback: next.allowCdnFallback !== false,
     librarySyncFolder: String(next.librarySyncFolder || "").trim(),
-    syncDeviceName: String(next.syncDeviceName || os.hostname()).trim().slice(0, 80) || os.hostname(),
+    syncDeviceName:
+      String(next.syncDeviceName || os.hostname())
+        .trim()
+        .slice(0, 80) || os.hostname(),
     syncOnStart: next.syncOnStart === true,
     syncAfterRestore: next.syncAfterRestore === true,
-    syncIntervalMinutes: Math.max(0, Math.min(1440, Number(next.syncIntervalMinutes) || 0)),
-    syncDirection: ["both", "pull", "push"].includes(next.syncDirection) ? next.syncDirection : "both",
-    deviceId: String(appSettings.deviceId || next.deviceId || crypto.randomUUID()),
+    syncIntervalMinutes: Math.max(
+      0,
+      Math.min(1440, Number(next.syncIntervalMinutes) || 0),
+    ),
+    syncDirection: ["both", "pull", "push"].includes(next.syncDirection)
+      ? next.syncDirection
+      : "both",
+    deviceId: String(
+      appSettings.deviceId || next.deviceId || crypto.randomUUID(),
+    ),
     deviceFingerprint: currentDeviceFingerprint,
   };
   const resolved = resolveOutputRoot(normalized.outputRoot);
   if (path.resolve(path.parse(resolved).root) === path.resolve(resolved)) {
-    throw new Error("Не можна зберігати проєкти безпосередньо в корені диска. Оберіть окрему папку.");
+    throw new Error(
+      "Не можна зберігати проєкти безпосередньо в корені диска. Оберіть окрему папку.",
+    );
   }
-  if (!directoryWritable(resolved)) throw new Error(`Немає дозволу на запис у папку: ${resolved}`);
-  if (normalized.librarySyncFolder) validateLibrarySyncFolder(normalized.librarySyncFolder);
+  if (!directoryWritable(resolved))
+    throw new Error(`Немає дозволу на запис у папку: ${resolved}`);
+  if (normalized.librarySyncFolder)
+    validateLibrarySyncFolder(normalized.librarySyncFolder);
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(normalized, null, 2), "utf8");
   appSettings = normalized;
   OUTPUT_ROOT = resolved;
@@ -129,7 +162,9 @@ function folderSize(root) {
     const target = path.join(root, entry.name);
     if (entry.isDirectory()) total += folderSize(target);
     else {
-      try { total += fs.statSync(target).size; } catch {}
+      try {
+        total += fs.statSync(target).size;
+      } catch {}
     }
   }
   return total;
@@ -148,9 +183,10 @@ function projectDirectories(root) {
     if (!entry.isDirectory()) continue;
     const first = path.join(root, entry.name);
     const firstReport = reportPathFor(first);
-    const firstIsProject = fs.existsSync(firstReport)
-      || fs.existsSync(path.join(first, "site"))
-      || fs.existsSync(path.join(first, "packages"));
+    const firstIsProject =
+      fs.existsSync(firstReport) ||
+      fs.existsSync(path.join(first, "site")) ||
+      fs.existsSync(path.join(first, "packages"));
     if (firstIsProject) {
       projects.push(first);
       continue;
@@ -158,7 +194,11 @@ function projectDirectories(root) {
     for (const child of fs.readdirSync(first, { withFileTypes: true })) {
       if (!child.isDirectory()) continue;
       const second = path.join(first, child.name);
-      if (fs.existsSync(reportPathFor(second)) || fs.existsSync(path.join(second, "site")) || fs.existsSync(path.join(second, "packages"))) {
+      if (
+        fs.existsSync(reportPathFor(second)) ||
+        fs.existsSync(path.join(second, "site")) ||
+        fs.existsSync(path.join(second, "packages"))
+      ) {
         projects.push(second);
       }
     }
@@ -174,8 +214,11 @@ function zipFiles(directory) {
   const locations = [directory, path.join(directory, "packages")];
   return locations.flatMap((location) => {
     if (!fs.existsSync(location)) return [];
-    return fs.readdirSync(location, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".zip"))
+    return fs
+      .readdirSync(location, { withFileTypes: true })
+      .filter(
+        (entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".zip"),
+      )
       .map((entry) => path.join(location, entry.name));
   });
 }
@@ -184,19 +227,33 @@ function listProjects() {
   const items = [];
   const seen = new Set();
   for (const root of storageRoots()) {
-    try { fs.mkdirSync(root, { recursive: true }); } catch { continue; }
+    try {
+      fs.mkdirSync(root, { recursive: true });
+    } catch {
+      continue;
+    }
     for (const directory of projectDirectories(root)) {
       const id = projectId(root, directory);
       if (seen.has(id)) continue;
       seen.add(id);
       const manifestPath = reportPathFor(directory);
       let report = null;
-      try { report = JSON.parse(fs.readFileSync(manifestPath, "utf8")); } catch {}
+      try {
+        report = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      } catch {}
       const stat = fs.statSync(directory);
-      const manifestBytes = report?.files?.reduce((sum, file) => sum + (Number(file.bytes) || 0), 0) || 0;
+      const manifestBytes =
+        report?.files?.reduce(
+          (sum, file) => sum + (Number(file.bytes) || 0),
+          0,
+        ) || 0;
       const zips = zipFiles(directory);
       const zipBytes = zips.reduce((sum, file) => {
-        try { return sum + fs.statSync(file).size; } catch { return sum; }
+        try {
+          return sum + fs.statSync(file).size;
+        } catch {
+          return sum;
+        }
       }, 0);
       items.push({
         id,
@@ -214,13 +271,27 @@ function listProjects() {
       });
     }
   }
-  return items.sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
+  return items.sort((a, b) =>
+    String(b.completedAt).localeCompare(String(a.completedAt)),
+  );
 }
 
 function projectPath(id) {
-  const value = String(id || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  const value = String(id || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "");
   const segments = value.split("/");
-  if (!value || segments.length > 3 || segments.some((segment) => !segment || segment === "." || segment === ".." || path.basename(segment) !== segment)) {
+  if (
+    !value ||
+    segments.length > 3 ||
+    segments.some(
+      (segment) =>
+        !segment ||
+        segment === "." ||
+        segment === ".." ||
+        path.basename(segment) !== segment,
+    )
+  ) {
     throw new Error("Некоректний проєкт.");
   }
   for (const root of storageRoots()) {
@@ -229,12 +300,16 @@ function projectPath(id) {
     if (fs.existsSync(target)) return target;
   }
   const target = path.resolve(OUTPUT_ROOT, ...segments);
-  if (!target.startsWith(`${path.resolve(OUTPUT_ROOT)}${path.sep}`)) throw new Error("Некоректний проєкт.");
+  if (!target.startsWith(`${path.resolve(OUTPUT_ROOT)}${path.sep}`))
+    throw new Error("Некоректний проєкт.");
   return target;
 }
 
 function sendJson(res, status, data) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
   res.end(JSON.stringify(data));
 }
 
@@ -244,17 +319,30 @@ function normalizeTarget(value) {
   let url = new URL(raw);
   let requestedTimestamp = "";
   if (/^(?:www\.)?web\.archive\.org$/i.test(url.hostname)) {
-    const match = url.pathname.match(/^\/web\/(\d{8,14})(?:[a-z_]+)?\/(https?:\/\/.+)$/i);
-    if (!match) throw new Error("Посилання Wayback не містить коректної адреси відновлюваного сайту.");
+    const match = url.pathname.match(
+      /^\/web\/(\d{8,14})(?:[a-z_]+)?\/(https?:\/\/.+)$/i,
+    );
+    if (!match)
+      throw new Error(
+        "Посилання Wayback не містить коректної адреси відновлюваного сайту.",
+      );
     requestedTimestamp = match[1];
     url = new URL(`${match[2]}${url.search}`);
   }
   if (!url.hostname.includes(".")) throw new Error("Вкажіть коректний домен.");
-  return { hostname: url.hostname.toLowerCase().replace(/^www\./, ""), url, requestedTimestamp };
+  return {
+    hostname: url.hostname.toLowerCase().replace(/^www\./, ""),
+    url,
+    requestedTimestamp,
+  };
 }
 
 function safeName(value) {
-  return String(value).replace(/[^a-z0-9._-]+/gi, "_").replace(/^_+|_+$/g, "") || "site";
+  return (
+    String(value)
+      .replace(/[^a-z0-9._-]+/gi, "_")
+      .replace(/^_+|_+$/g, "") || "site"
+  );
 }
 
 function timestampFolder(timestamp) {
@@ -275,9 +363,14 @@ function loadAssetCache() {
   assetCacheIndex.version = 2;
   for (const [key, asset] of Object.entries(assetCacheIndex.assets)) {
     const signature = portableAssetSignature(asset.firstUrl);
-    if (signature && !assetCacheIndex.signatures[signature]) assetCacheIndex.signatures[signature] = key;
+    if (signature && !assetCacheIndex.signatures[signature])
+      assetCacheIndex.signatures[signature] = key;
     const detectedFamily = classifyAsset(asset.firstUrl);
-    if ((!asset.family || asset.family === "Other") && detectedFamily !== "Other") asset.family = detectedFamily;
+    if (
+      (!asset.family || asset.family === "Other") &&
+      detectedFamily !== "Other"
+    )
+      asset.family = detectedFamily;
   }
   return assetCacheIndex;
 }
@@ -293,7 +386,10 @@ function cacheUrlKey(original, includeSearch = true) {
 
 function cacheDigestKey(digest, data = null) {
   const cleaned = String(digest || "").replace(/[^a-z0-9_-]/gi, "");
-  return cleaned || (data ? crypto.createHash("sha256").update(data).digest("hex") : "");
+  return (
+    cleaned ||
+    (data ? crypto.createHash("sha256").update(data).digest("hex") : "")
+  );
 }
 
 function classifyAsset(original) {
@@ -301,7 +397,10 @@ function classifyAsset(original) {
   const patterns = [
     ["jQuery", /(?:^|[/_.-])jquery(?:[-.]|$)/],
     ["Bootstrap", /(?:^|[/_.-])bootstrap(?:[-.]|$)/],
-    ["Joomla core", /\/(?:media\/system|media\/jui|administrator|components\/com_[^/]+\/assets)\//],
+    [
+      "Joomla core",
+      /\/(?:media\/system|media\/jui|administrator|components\/com_[^/]+\/assets)\//,
+    ],
     ["WordPress core", /\/wp-(?:includes|admin)\//],
     ["Elementor", /\/(?:elementor|elementor-pro)\//],
     ["WooCommerce", /\/woocommerce\//],
@@ -317,8 +416,14 @@ function classifyAsset(original) {
     ["React", /(?:^|[/_.-])react(?:[-.]|$)/],
     ["Vue", /(?:^|[/_.-])vue(?:[-.]|$)/],
     ["Angular", /(?:^|[/_.-])angular(?:[-.]|$)/],
-    ["Drupal core", /\/(?:core\/assets|core\/misc|sites\/all\/modules|modules\/contrib)\//],
-    ["Laravel / Vite", /\/(?:build\/assets|mix-manifest\.json|vendor\/laravel)\//],
+    [
+      "Drupal core",
+      /\/(?:core\/assets|core\/misc|sites\/all\/modules|modules\/contrib)\//,
+    ],
+    [
+      "Laravel / Vite",
+      /\/(?:build\/assets|mix-manifest\.json|vendor\/laravel)\//,
+    ],
     ["Magento", /\/(?:static\/version\d+|pub\/static|skin\/frontend)\//],
     ["PrestaShop", /\/(?:themes\/[^/]+\/assets|modules\/[^/]+\/views)\//],
     ["OpenCart", /\/catalog\/view\/(?:javascript|theme)\//],
@@ -335,17 +440,35 @@ function portableAssetSignature(original) {
     if (!/\.(?:css|m?js)(?:$)/i.test(url.pathname)) return null;
     const family = classifyAsset(original);
     const file = path.posix.basename(url.pathname).toLowerCase();
-    const parameterVersion = ["ver", "version", "v"].map((name) => url.searchParams.get(name))
-      .find((value) => /^\d+(?:\.\d+){1,3}(?:[-+._a-z0-9]*)?$/i.test(value || ""));
-    const pathVersion = url.pathname.match(/(?:@|[/_.-])v?(\d+\.\d+(?:\.\d+)?(?:[-+._a-z0-9]*)?)(?:[/_.-]|$)/i)?.[1];
-    const contentHash = file.match(/[._-]([a-f0-9]{8,64})(?=\.(?:css|m?js)$)/i)?.[1];
-    const queryHash = family !== "Other" ? url.search.match(/^\?([a-f0-9]{8,64})$/i)?.[1] : null;
+    const parameterVersion = ["ver", "version", "v"]
+      .map((name) => url.searchParams.get(name))
+      .find((value) =>
+        /^\d+(?:\.\d+){1,3}(?:[-+._a-z0-9]*)?$/i.test(value || ""),
+      );
+    const pathVersion = url.pathname.match(
+      /(?:@|[/_.-])v?(\d+\.\d+(?:\.\d+)?(?:[-+._a-z0-9]*)?)(?:[/_.-]|$)/i,
+    )?.[1];
+    const contentHash = file.match(
+      /[._-]([a-f0-9]{8,64})(?=\.(?:css|m?js)$)/i,
+    )?.[1];
+    const queryHash =
+      family !== "Other"
+        ? url.search.match(/^\?([a-f0-9]{8,64})$/i)?.[1]
+        : null;
     const version = parameterVersion || pathVersion || contentHash || queryHash;
     if (!version) return null;
-    const cmsFamily = /core|Joomla|Drupal|Laravel|Magento|PrestaShop|OpenCart|TYPO3|Next|Nuxt/i.test(family);
+    const cmsFamily =
+      /core|Joomla|Drupal|Laravel|Magento|PrestaShop|OpenCart|TYPO3|Next|Nuxt/i.test(
+        family,
+      );
     if (family === "Other" && !contentHash) return null;
-    const identity = cmsFamily ? url.pathname.toLowerCase() : `${family.toLowerCase()}/${file}`;
-    return crypto.createHash("sha256").update(`${identity}|${version}`).digest("hex");
+    const identity = cmsFamily
+      ? url.pathname.toLowerCase()
+      : `${family.toLowerCase()}/${file}`;
+    return crypto
+      .createHash("sha256")
+      .update(`${identity}|${version}`)
+      .digest("hex");
   } catch {
     return null;
   }
@@ -354,15 +477,24 @@ function portableAssetSignature(original) {
 function assetCacheLookup(original, digest) {
   const index = loadAssetCache();
   const signature = portableAssetSignature(original);
-  const candidates = [...new Set([
-    cacheDigestKey(digest),
-    index.urls[cacheUrlKey(original)],
-    index.urls[cacheUrlKey(original, false)],
-    signature ? index.signatures[signature] : null,
-  ].filter(Boolean))];
+  const candidates = [
+    ...new Set(
+      [
+        cacheDigestKey(digest),
+        index.urls[cacheUrlKey(original)],
+        index.urls[cacheUrlKey(original, false)],
+        signature ? index.signatures[signature] : null,
+      ].filter(Boolean),
+    ),
+  ];
   for (const key of candidates) {
     const file = path.join(ASSET_CACHE_ROOT, `${key}.bin`);
-    if (fs.existsSync(file)) return { data: fs.readFileSync(file), key, meta: index.assets[key] || {} };
+    if (fs.existsSync(file))
+      return {
+        data: fs.readFileSync(file),
+        key,
+        meta: index.assets[key] || {},
+      };
   }
   return null;
 }
@@ -403,7 +535,11 @@ function nameSimilarity(left, right) {
 // similar filename alone is not enough to silently replace a site's own code.
 function assetCacheFuzzyLookup(original) {
   let target;
-  try { target = new URL(original); } catch { return null; }
+  try {
+    target = new URL(original);
+  } catch {
+    return null;
+  }
   const extension = path.posix.extname(target.pathname).toLowerCase();
   if (![".css", ".js", ".mjs"].includes(extension)) return null;
   const family = classifyAsset(original);
@@ -415,12 +551,27 @@ function assetCacheFuzzyLookup(original) {
   for (const [key, meta] of Object.entries(index.assets || {})) {
     if (!meta?.firstUrl || meta.family !== family) continue;
     let candidate;
-    try { candidate = new URL(meta.firstUrl); } catch { continue; }
-    if (path.posix.extname(candidate.pathname).toLowerCase() !== extension) continue;
-    const score = nameSimilarity(targetName, normalizedAssetName(meta.firstUrl));
+    try {
+      candidate = new URL(meta.firstUrl);
+    } catch {
+      continue;
+    }
+    if (path.posix.extname(candidate.pathname).toLowerCase() !== extension)
+      continue;
+    const score = nameSimilarity(
+      targetName,
+      normalizedAssetName(meta.firstUrl),
+    );
     if (score < 0.9 || (best && score <= best.score)) continue;
     const file = path.join(ASSET_CACHE_ROOT, `${key}.bin`);
-    if (fs.existsSync(file)) best = { data: fs.readFileSync(file), key, meta, score, matchType: "family-name" };
+    if (fs.existsSync(file))
+      best = {
+        data: fs.readFileSync(file),
+        key,
+        meta,
+        score,
+        matchType: "family-name",
+      };
   }
   return best;
 }
@@ -454,7 +605,9 @@ function assetCacheStats() {
   const index = loadAssetCache();
   const assets = Object.values(index.assets);
   const families = {};
-  for (const asset of assets) families[asset.family || "Other"] = (families[asset.family || "Other"] || 0) + 1;
+  for (const asset of assets)
+    families[asset.family || "Other"] =
+      (families[asset.family || "Other"] || 0) + 1;
   return {
     files: assets.length,
     bytes: assets.reduce((sum, asset) => sum + (Number(asset.bytes) || 0), 0),
@@ -466,10 +619,17 @@ function assetCacheStats() {
 
 function assetCacheItems() {
   const index = loadAssetCache();
-  return Object.entries(index.assets).map(([key, asset]) => ({
-    key, ...asset,
-    urls: Object.values(index.urls).filter((value) => value === key).length,
-  })).sort((a, b) => String(a.family).localeCompare(String(b.family)) || String(a.firstUrl).localeCompare(String(b.firstUrl)));
+  return Object.entries(index.assets)
+    .map(([key, asset]) => ({
+      key,
+      ...asset,
+      urls: Object.values(index.urls).filter((value) => value === key).length,
+    }))
+    .sort(
+      (a, b) =>
+        String(a.family).localeCompare(String(b.family)) ||
+        String(a.firstUrl).localeCompare(String(b.firstUrl)),
+    );
 }
 
 function saveAssetIndex(index) {
@@ -481,13 +641,19 @@ function saveAssetIndex(index) {
 function validateLibrarySyncFolder(configured) {
   const folder = path.resolve(String(configured || "").trim());
   if (!configured) throw new Error("Вкажіть папку синхронізації.");
-  if (folder === path.parse(folder).root) throw new Error("Не можна використовувати корінь диска для синхронізації.");
-  if (folder === path.resolve(ASSET_CACHE_ROOT)
-    || folder.startsWith(`${path.resolve(ASSET_CACHE_ROOT)}${path.sep}`)
-    || path.resolve(ASSET_CACHE_ROOT).startsWith(`${folder}${path.sep}`)) {
-    throw new Error("Папка синхронізації має бути окремою від локальної бібліотеки.");
+  if (folder === path.parse(folder).root)
+    throw new Error("Не можна використовувати корінь диска для синхронізації.");
+  if (
+    folder === path.resolve(ASSET_CACHE_ROOT) ||
+    folder.startsWith(`${path.resolve(ASSET_CACHE_ROOT)}${path.sep}`) ||
+    path.resolve(ASSET_CACHE_ROOT).startsWith(`${folder}${path.sep}`)
+  ) {
+    throw new Error(
+      "Папка синхронізації має бути окремою від локальної бібліотеки.",
+    );
   }
-  if (!directoryWritable(folder)) throw new Error(`Немає доступу до папки синхронізації: ${folder}`);
+  if (!directoryWritable(folder))
+    throw new Error(`Немає доступу до папки синхронізації: ${folder}`);
   return folder;
 }
 
@@ -507,22 +673,35 @@ function copyIfMissing(source, destination) {
 }
 
 function validSharedIndex(value) {
-  return value && typeof value === "object"
-    && value.assets && typeof value.assets === "object"
-    && value.urls && typeof value.urls === "object";
+  return (
+    value &&
+    typeof value === "object" &&
+    value.assets &&
+    typeof value.assets === "object" &&
+    value.urls &&
+    typeof value.urls === "object"
+  );
 }
 
 function syncLibrary(action = "both") {
-  if (!["push", "pull", "both"].includes(action)) throw new Error("Невідома дія синхронізації.");
+  if (!["push", "pull", "both"].includes(action))
+    throw new Error("Невідома дія синхронізації.");
   const configuredFolder = appSettings.librarySyncFolder;
-  if (!configuredFolder) throw new Error("Спочатку виберіть папку Google Drive у налаштуваннях.");
+  if (!configuredFolder)
+    throw new Error("Спочатку виберіть папку Google Drive у налаштуваннях.");
   const syncFolder = validateLibrarySyncFolder(configuredFolder);
   const sharedRoot = path.join(syncFolder, "773-asset-library-v1");
   const sharedObjects = path.join(sharedRoot, "objects");
   const sharedDevices = path.join(sharedRoot, "devices");
   fs.mkdirSync(sharedObjects, { recursive: true });
   fs.mkdirSync(sharedDevices, { recursive: true });
-  librarySyncState = { ...librarySyncState, status: "syncing", lastError: null, uploaded: 0, downloaded: 0 };
+  librarySyncState = {
+    ...librarySyncState,
+    status: "syncing",
+    lastError: null,
+    uploaded: 0,
+    downloaded: 0,
+  };
 
   try {
     const local = loadAssetCache();
@@ -532,8 +711,13 @@ function syncLibrary(action = "both") {
       for (const key of Object.keys(local.assets || {})) {
         if (!/^[a-z0-9_-]{8,160}$/i.test(key)) continue;
         const source = path.join(ASSET_CACHE_ROOT, `${key}.bin`);
-        const destination = path.join(sharedObjects, key.slice(0, 2), `${key}.bin`);
-        if (fs.existsSync(source) && copyIfMissing(source, destination)) uploaded += 1;
+        const destination = path.join(
+          sharedObjects,
+          key.slice(0, 2),
+          `${key}.bin`,
+        );
+        if (fs.existsSync(source) && copyIfMissing(source, destination))
+          uploaded += 1;
       }
       const deviceManifest = {
         version: 2,
@@ -544,9 +728,16 @@ function syncLibrary(action = "both") {
         signatures: local.signatures || {},
         assets: local.assets || {},
       };
-      const manifestPath = path.join(sharedDevices, `${safeName(appSettings.deviceId)}.json`);
+      const manifestPath = path.join(
+        sharedDevices,
+        `${safeName(appSettings.deviceId)}.json`,
+      );
       const manifestTemp = `${manifestPath}.${process.pid}.tmp`;
-      fs.writeFileSync(manifestTemp, JSON.stringify(deviceManifest, null, 2), "utf8");
+      fs.writeFileSync(
+        manifestTemp,
+        JSON.stringify(deviceManifest, null, 2),
+        "utf8",
+      );
       fs.copyFileSync(manifestTemp, manifestPath);
       fs.rmSync(manifestTemp, { force: true });
     }
@@ -558,27 +749,45 @@ function syncLibrary(action = "both") {
         signatures: { ...(local.signatures || {}) },
         assets: { ...(local.assets || {}) },
       };
-      for (const entry of fs.readdirSync(sharedDevices, { withFileTypes: true })) {
+      for (const entry of fs.readdirSync(sharedDevices, {
+        withFileTypes: true,
+      })) {
         if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
         let remote;
-        try { remote = JSON.parse(fs.readFileSync(path.join(sharedDevices, entry.name), "utf8")); }
-        catch { continue; }
+        try {
+          remote = JSON.parse(
+            fs.readFileSync(path.join(sharedDevices, entry.name), "utf8"),
+          );
+        } catch {
+          continue;
+        }
         if (!validSharedIndex(remote)) continue;
         for (const [key, meta] of Object.entries(remote.assets)) {
           if (!/^[a-z0-9_-]{8,160}$/i.test(key)) continue;
           const existing = merged.assets[key];
-          if (!existing || String(meta.lastUsedAt || "") > String(existing.lastUsedAt || "")) {
+          if (
+            !existing ||
+            String(meta.lastUsedAt || "") > String(existing.lastUsedAt || "")
+          ) {
             merged.assets[key] = { ...existing, ...meta };
           }
-          const source = path.join(sharedObjects, key.slice(0, 2), `${key}.bin`);
+          const source = path.join(
+            sharedObjects,
+            key.slice(0, 2),
+            `${key}.bin`,
+          );
           const destination = path.join(ASSET_CACHE_ROOT, `${key}.bin`);
-          if (fs.existsSync(source) && copyIfMissing(source, destination)) downloaded += 1;
+          if (fs.existsSync(source) && copyIfMissing(source, destination))
+            downloaded += 1;
         }
         for (const [url, key] of Object.entries(remote.urls)) {
           if (!merged.urls[url] && merged.assets[key]) merged.urls[url] = key;
         }
-        for (const [signature, key] of Object.entries(remote.signatures || {})) {
-          if (!merged.signatures[signature] && merged.assets[key]) merged.signatures[signature] = key;
+        for (const [signature, key] of Object.entries(
+          remote.signatures || {},
+        )) {
+          if (!merged.signatures[signature] && merged.assets[key])
+            merged.signatures[signature] = key;
         }
       }
       saveAssetIndex(merged);
@@ -596,20 +805,31 @@ function syncLibrary(action = "both") {
     };
     return { ok: true, ...librarySyncState, stats: assetCacheStats() };
   } catch (error) {
-    librarySyncState = { ...librarySyncState, status: "error", lastError: error.message };
+    librarySyncState = {
+      ...librarySyncState,
+      status: "error",
+      lastError: error.message,
+    };
     throw error;
   }
 }
 
-function testLibrarySyncFolder(configuredFolder = appSettings.librarySyncFolder) {
+function testLibrarySyncFolder(
+  configuredFolder = appSettings.librarySyncFolder,
+) {
   const folder = validateLibrarySyncFolder(configuredFolder);
   const sharedRoot = path.join(folder, "773-asset-library-v1");
   fs.mkdirSync(path.join(sharedRoot, "objects"), { recursive: true });
   fs.mkdirSync(path.join(sharedRoot, "devices"), { recursive: true });
-  const devices = fs.readdirSync(path.join(sharedRoot, "devices"), { withFileTypes: true })
+  const devices = fs
+    .readdirSync(path.join(sharedRoot, "devices"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json")).length;
   let freeBytes = null;
-  try { freeBytes = Number(fs.statfsSync(folder).bavail) * Number(fs.statfsSync(folder).bsize); } catch {}
+  try {
+    freeBytes =
+      Number(fs.statfsSync(folder).bavail) *
+      Number(fs.statfsSync(folder).bsize);
+  } catch {}
   return {
     ok: true,
     folder,
@@ -627,10 +847,16 @@ function scheduleLibrarySync() {
   librarySyncTimer = null;
   const minutes = Number(appSettings.syncIntervalMinutes) || 0;
   if (!appSettings.librarySyncFolder || minutes <= 0) return;
-  librarySyncTimer = setInterval(() => {
-    try { syncLibrary(appSettings.syncDirection || "both"); }
-    catch (error) { console.error(`Періодична синхронізація бібліотеки: ${error.message}`); }
-  }, minutes * 60 * 1000);
+  librarySyncTimer = setInterval(
+    () => {
+      try {
+        syncLibrary(appSettings.syncDirection || "both");
+      } catch (error) {
+        console.error(`Періодична синхронізація бібліотеки: ${error.message}`);
+      }
+    },
+    minutes * 60 * 1000,
+  );
   librarySyncTimer.unref?.();
 }
 
@@ -643,22 +869,46 @@ function selectSyncFolder() {
       "$dialog.ShowNewFolderButton = $true",
       "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output $dialog.SelectedPath }",
     ].join("; ");
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-STA", "-Command", script], { encoding: "utf8", windowsHide: true });
+    const result = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-STA", "-Command", script],
+      { encoding: "utf8", windowsHide: true },
+    );
     return String(result.stdout || "").trim();
   }
   if (process.platform === "darwin") {
-    const result = spawnSync("osascript", ["-e", 'POSIX path of (choose folder with prompt "Оберіть спільну папку Google Drive для бібліотеки 773")'], { encoding: "utf8" });
+    const result = spawnSync(
+      "osascript",
+      [
+        "-e",
+        'POSIX path of (choose folder with prompt "Оберіть спільну папку Google Drive для бібліотеки 773")',
+      ],
+      { encoding: "utf8" },
+    );
     return String(result.stdout || "").trim();
   }
-  const result = spawnSync("zenity", ["--file-selection", "--directory", "--title=Оберіть спільну папку Google Drive"], { encoding: "utf8" });
+  const result = spawnSync(
+    "zenity",
+    [
+      "--file-selection",
+      "--directory",
+      "--title=Оберіть спільну папку Google Drive",
+    ],
+    { encoding: "utf8" },
+  );
   return String(result.stdout || "").trim();
 }
 
 function trustedVersionedCdn(original) {
   try {
     const url = new URL(original);
-    const trusted = /^(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)$/i.test(url.hostname);
-    const versioned = /(?:@|\/)(?:v)?\d+\.\d+(?:\.\d+)?(?:[/-]|$)/i.test(url.pathname);
+    const trusted =
+      /^(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)$/i.test(
+        url.hostname,
+      );
+    const versioned = /(?:@|\/)(?:v)?\d+\.\d+(?:\.\d+)?(?:[/-]|$)/i.test(
+      url.pathname,
+    );
     return trusted && versioned ? url.href : null;
   } catch {
     return null;
@@ -683,8 +933,12 @@ function isNetworkError(error) {
     error?.message,
     error?.cause?.code,
     error?.cause?.message,
-  ].filter(Boolean).join(" ");
-  return /ECONNREFUSED|ECONNABORTED|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|AbortError|fetch failed|timeout|timed out|operation was aborted/i.test(detail);
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return /ECONNREFUSED|ECONNABORTED|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|AbortError|fetch failed|timeout|timed out|operation was aborted/i.test(
+    detail,
+  );
 }
 
 function httpFailure(response) {
@@ -718,7 +972,13 @@ const isReconstructableJoomla = isReconstructableCmsResource;
 
 function classifyResourceFailure(original, errors) {
   if (isReconstructableCmsResource(original)) return "reconstructable";
-  if (errors.some((error) => error?.networkRelated || error?.temporary || isNetworkError(error))) return "retry_later";
+  if (
+    errors.some(
+      (error) =>
+        error?.networkRelated || error?.temporary || isNetworkError(error),
+    )
+  )
+    return "retry_later";
   return "not_archived";
 }
 
@@ -735,14 +995,22 @@ async function fetchRetry(url, options = {}, retries = 5, timeoutMs = 45000) {
     internetArchive = /archive\.org$/i.test(hostname);
     service = internetArchive ? "Internet Archive" : hostname;
   } catch {}
-  const { onRetry, onSuccess, onExhausted, retryBudget, ...fetchOptions } = options;
-  const allowedByBudget = retryBudget ? Math.max(0, Number(retryBudget.remaining) || 0) : 5;
-  const maximumRetries = internetArchive ? Math.min(5, allowedByBudget) : Math.max(0, Number(retries) || 0);
+  const { onRetry, onSuccess, onExhausted, retryBudget, ...fetchOptions } =
+    options;
+  const allowedByBudget = retryBudget
+    ? Math.max(0, Number(retryBudget.remaining) || 0)
+    : 5;
+  const maximumRetries = internetArchive
+    ? Math.min(5, allowedByBudget)
+    : Math.max(0, Number(retries) || 0);
   for (let attempt = 0; attempt <= maximumRetries; attempt += 1) {
     try {
       const response = await fetch(url, {
         ...fetchOptions,
-        headers: { "User-Agent": "773SiteRestorer/1.0 local tool", ...(fetchOptions.headers || {}) },
+        headers: {
+          "User-Agent": "773SiteRestorer/1.0 local tool",
+          ...(fetchOptions.headers || {}),
+        },
         signal: AbortSignal.timeout(timeoutMs),
       });
       onSuccess?.(response);
@@ -752,14 +1020,21 @@ async function fetchRetry(url, options = {}, retries = 5, timeoutMs = 45000) {
       if (!isNetworkError(error)) throw error;
       if (attempt < maximumRetries) {
         const delay = waybackRetryDelay(attempt);
-        if (retryBudget) retryBudget.remaining = Math.max(0, retryBudget.remaining - 1);
+        if (retryBudget)
+          retryBudget.remaining = Math.max(0, retryBudget.remaining - 1);
         onRetry?.({ retry: attempt + 1, maximumRetries, delay, error });
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }
-  const detail = last?.cause?.code || last?.cause?.message || last?.message || "невідома мережева помилка";
-  const failure = new Error(`Не вдалося з’єднатися з ${service} після ${maximumRetries + 1} спроб (${detail})`);
+  const detail =
+    last?.cause?.code ||
+    last?.cause?.message ||
+    last?.message ||
+    "невідома мережева помилка";
+  const failure = new Error(
+    `Не вдалося з’єднатися з ${service} після ${maximumRetries + 1} спроб (${detail})`,
+  );
   failure.networkRelated = true;
   failure.code = last?.cause?.code || last?.code || "NETWORK_RETRY_EXHAUSTED";
   onExhausted?.(failure);
@@ -767,7 +1042,12 @@ async function fetchRetry(url, options = {}, retries = 5, timeoutMs = 45000) {
 }
 
 async function cdx(query) {
-  const response = await fetchRetry(`https://web.archive.org/cdx/search/cdx?${query}`, {}, 2, 20000);
+  const response = await fetchRetry(
+    `https://web.archive.org/cdx/search/cdx?${query}`,
+    {},
+    2,
+    20000,
+  );
   if (!response.ok) throw new Error(`CDX API повернув HTTP ${response.status}`);
   const text = await response.text();
   try {
@@ -778,32 +1058,50 @@ async function cdx(query) {
 }
 
 async function cdxQuick(query, fetchOptions = {}) {
-  const response = await fetchRetry(`https://web.archive.org/cdx/search/cdx?${query}`, fetchOptions, 5, 12000);
+  const response = await fetchRetry(
+    `https://web.archive.org/cdx/search/cdx?${query}`,
+    fetchOptions,
+    5,
+    12000,
+  );
   if (!response.ok) throw new Error(`CDX API повернув HTTP ${response.status}`);
   const text = await response.text();
-  try { return JSON.parse(text); }
-  catch { throw new Error("CDX API повернув некоректну відповідь"); }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("CDX API повернув некоректну відповідь");
+  }
 }
 
 async function findSnapshots(domain, allowLocalFallback = true) {
   const { hostname, requestedTimestamp } = normalizeTarget(domain);
   if (requestedTimestamp) {
-    return [{
-      timestamp: requestedTimestamp,
-      original: `https://www.${hostname}/`,
-      date: `${requestedTimestamp.slice(0, 4)}-${requestedTimestamp.slice(4, 6)}-${requestedTimestamp.slice(6, 8)}`,
-      source: "wayback-url",
-    }];
+    return [
+      {
+        timestamp: requestedTimestamp,
+        original: `https://www.${hostname}/`,
+        date: `${requestedTimestamp.slice(0, 4)}-${requestedTimestamp.slice(4, 6)}-${requestedTimestamp.slice(6, 8)}`,
+        source: "wayback-url",
+      },
+    ];
   }
   const patterns = [hostname, `www.${hostname}`];
-  const requests = await Promise.allSettled(patterns.map((url) => cdx(new URLSearchParams({
-      url,
-      output: "json",
-      fl: "timestamp,original,statuscode,digest",
-      filter: "statuscode:200",
-      collapse: "digest",
-    }))));
-  const responses = requests.filter((item) => item.status === "fulfilled").map((item) => item.value);
+  const requests = await Promise.allSettled(
+    patterns.map((url) =>
+      cdx(
+        new URLSearchParams({
+          url,
+          output: "json",
+          fl: "timestamp,original,statuscode,digest",
+          filter: "statuscode:200",
+          collapse: "digest",
+        }),
+      ),
+    ),
+  );
+  const responses = requests
+    .filter((item) => item.status === "fulfilled")
+    .map((item) => item.value);
   if (!responses.length) {
     const fallback = await findSnapshotFallback(hostname);
     if (fallback.length) return fallback;
@@ -817,11 +1115,14 @@ async function findSnapshots(domain, allowLocalFallback = true) {
   for (const row of responses.flatMap((response) => response.slice(1))) {
     if (!unique.has(row[0])) unique.set(row[0], row);
   }
-  return [...unique.values()].map(([timestamp, original]) => ({
-    timestamp,
-    original,
-    date: `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}`,
-  })).sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 250);
+  return [...unique.values()]
+    .map(([timestamp, original]) => ({
+      timestamp,
+      original,
+      date: `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}`,
+    }))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 250);
 }
 
 function findLocalSnapshots(hostname) {
@@ -834,7 +1135,8 @@ function findLocalSnapshots(hostname) {
         if (!fs.existsSync(manifestPath)) continue;
         try {
           const report = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-          if (report.domain !== hostname || !report.requestedTimestamp) continue;
+          if (report.domain !== hostname || !report.requestedTimestamp)
+            continue;
           found.set(report.requestedTimestamp, {
             timestamp: report.requestedTimestamp,
             original: `https://www.${hostname}/`,
@@ -845,7 +1147,9 @@ function findLocalSnapshots(hostname) {
       }
     } catch {}
   }
-  return [...found.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return [...found.values()].sort((a, b) =>
+    b.timestamp.localeCompare(a.timestamp),
+  );
 }
 
 async function findSnapshotFallback(hostname) {
@@ -853,18 +1157,26 @@ async function findSnapshotFallback(hostname) {
     const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
     const response = await fetchRetry(
       `https://archive.org/wayback/available?url=${encodeURIComponent(hostname)}&timestamp=${timestamp}`,
-      {}, 1, 15000
+      {},
+      1,
+      15000,
     );
     if (response.ok) {
       const data = await response.json();
       const closest = data?.archived_snapshots?.closest;
       if (closest?.available && closest.timestamp) {
-        return [{
-          timestamp: closest.timestamp,
-          original: closest.url?.replace(/^https?:\/\/web\.archive\.org\/web\/\d+\/?/i, "") || `https://${hostname}/`,
-          date: `${closest.timestamp.slice(0, 4)}-${closest.timestamp.slice(4, 6)}-${closest.timestamp.slice(6, 8)}`,
-          source: "availability-api",
-        }];
+        return [
+          {
+            timestamp: closest.timestamp,
+            original:
+              closest.url?.replace(
+                /^https?:\/\/web\.archive\.org\/web\/\d+\/?/i,
+                "",
+              ) || `https://${hostname}/`,
+            date: `${closest.timestamp.slice(0, 4)}-${closest.timestamp.slice(4, 6)}-${closest.timestamp.slice(6, 8)}`,
+            source: "availability-api",
+          },
+        ];
       }
     }
   } catch {}
@@ -873,32 +1185,53 @@ async function findSnapshotFallback(hostname) {
 
 function chooseClosest(rows, requested) {
   if (!rows.length) return [];
-  return rows.map((row) => ({
-    row,
-    distance: Math.abs(Number(row[0]) - Number(requested)),
-  })).sort((a, b) => a.distance - b.distance);
+  return rows
+    .map((row) => ({
+      row,
+      distance: Math.abs(Number(row[0]) - Number(requested)),
+    }))
+    .sort((a, b) => a.distance - b.distance);
 }
 
-async function inventory(domain, timestamp, includeSubdomains, limit, windowYears = 1, period = {}) {
+async function inventory(
+  domain,
+  timestamp,
+  includeSubdomains,
+  limit,
+  windowYears = 1,
+  period = {},
+) {
   const year = Number(timestamp.slice(0, 4));
   const periodFrom = String(period.from || "").replace(/\D/g, "");
   const periodTo = String(period.to || "").replace(/\D/g, "");
-  const patterns = includeSubdomains ? [`*.${domain}/*`] : [`${domain}/*`, `www.${domain}/*`];
-  const requests = await Promise.allSettled(patterns.map((urlPattern) => cdx(new URLSearchParams({
-      url: urlPattern,
-      output: "json",
-      fl: "timestamp,original,mimetype,statuscode,digest,length",
-      filter: "statuscode:200",
-      from: periodFrom || String(Math.max(1996, year - windowYears)),
-      to: periodTo || String(year + windowYears),
-      limit: String(Math.min(50000, limit * 8)),
-      collapse: "digest",
-    }))));
-  const responses = requests.filter((item) => item.status === "fulfilled").map((item) => item.value);
+  const patterns = includeSubdomains
+    ? [`*.${domain}/*`]
+    : [`${domain}/*`, `www.${domain}/*`];
+  const requests = await Promise.allSettled(
+    patterns.map((urlPattern) =>
+      cdx(
+        new URLSearchParams({
+          url: urlPattern,
+          output: "json",
+          fl: "timestamp,original,mimetype,statuscode,digest,length",
+          filter: "statuscode:200",
+          from: periodFrom || String(Math.max(1996, year - windowYears)),
+          to: periodTo || String(year + windowYears),
+          limit: String(Math.min(50000, limit * 8)),
+          collapse: "digest",
+        }),
+      ),
+    ),
+  );
+  const responses = requests
+    .filter((item) => item.status === "fulfilled")
+    .map((item) => item.value);
   if (!responses.length) throw requests[0].reason;
   const rows = responses.flatMap((response) => response.slice(1));
   if (!rows.length) {
-    throw new Error(`Wayback Machine не повернув файлів у межах ±${windowYears} р. від обраної дати.`);
+    throw new Error(
+      `Wayback Machine не повернув файлів у межах ±${windowYears} р. від обраної дати.`,
+    );
   }
   return rows;
 }
@@ -913,11 +1246,20 @@ function inventoryFromLocal(domain, timestamp, limit) {
     try {
       const host = new URL(original).hostname.replace(/^www\./, "");
       if (host !== domain) continue;
-    } catch { continue; }
+    } catch {
+      continue;
+    }
     const identity = cacheUrlKey(original);
     if (seen.has(identity)) continue;
     seen.add(identity);
-    rows.push([timestamp, original, asset.mime || "", "200", key, String(asset.bytes || 0)]);
+    rows.push([
+      timestamp,
+      original,
+      asset.mime || "",
+      "200",
+      key,
+      String(asset.bytes || 0),
+    ]);
     if (rows.length >= limit) break;
   }
   if (rows.length < limit) {
@@ -930,9 +1272,21 @@ function inventoryFromLocal(domain, timestamp, limit) {
           const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
           if (report.domain !== domain) continue;
           for (const file of report.files || []) {
-            if (!isSuccessfulResource(file) || !file.original || seen.has(cacheUrlKey(file.original))) continue;
+            if (
+              !isSuccessfulResource(file) ||
+              !file.original ||
+              seen.has(cacheUrlKey(file.original))
+            )
+              continue;
             seen.add(cacheUrlKey(file.original));
-            rows.push([file.timestamp || timestamp, file.original, file.mime || "", "200", file.digest || "", String(file.bytes || 0)]);
+            rows.push([
+              file.timestamp || timestamp,
+              file.original,
+              file.mime || "",
+              "200",
+              file.digest || "",
+              String(file.bytes || 0),
+            ]);
             if (rows.length >= limit) return rows;
           }
         }
@@ -945,18 +1299,31 @@ function inventoryFromLocal(domain, timestamp, limit) {
 function outputPathFor(original, mime, mainDomain) {
   const url = new URL(original);
   let pathname = decodeURIComponent(url.pathname || "/").replace(/\\/g, "/");
-  pathname = pathname.split("/").filter((part) => part && part !== "." && part !== "..").join("/");
+  pathname = pathname
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..")
+    .join("/");
   const ext = path.posix.extname(pathname);
   const html = /text\/html|application\/xhtml/i.test(mime);
   if (!pathname) pathname = "index.html";
   else if (html && !ext) pathname = `${pathname.replace(/\/$/, "")}/index.html`;
   else if (pathname.endsWith("/")) pathname += "index.html";
   if (url.search) {
-    const suffix = crypto.createHash("sha1").update(url.search).digest("hex").slice(0, 8);
+    const suffix = crypto
+      .createHash("sha1")
+      .update(url.search)
+      .digest("hex")
+      .slice(0, 8);
     const parsed = path.posix.parse(pathname);
-    pathname = path.posix.join(parsed.dir, `${parsed.name}-${suffix}${parsed.ext || (html ? ".html" : "")}`);
+    pathname = path.posix.join(
+      parsed.dir,
+      `${parsed.name}-${suffix}${parsed.ext || (html ? ".html" : "")}`,
+    );
   }
-  const hostPrefix = url.hostname.replace(/^www\./, "") === mainDomain ? "" : `_hosts/${safeName(url.hostname)}/`;
+  const hostPrefix =
+    url.hostname.replace(/^www\./, "") === mainDomain
+      ? ""
+      : `_hosts/${safeName(url.hostname)}/`;
   return hostPrefix + pathname;
 }
 
@@ -973,22 +1340,34 @@ function buildUrlIndexes(urlMap) {
     exact.set(original, local);
     try {
       const parsed = new URL(original);
-      hostPath.set(`${parsed.hostname.replace(/^www\./, "")}${parsed.pathname}${parsed.search}`, local);
+      hostPath.set(
+        `${parsed.hostname.replace(/^www\./, "")}${parsed.pathname}${parsed.search}`,
+        local,
+      );
     } catch {}
   }
   return { exact, hostPath };
 }
 
 function resolveLocalReference(raw, sourceUrl, indexes) {
-  const value = String(raw || "").trim().replace(/^['"]|['"]$/g, "");
-  if (!value || /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(value)) return null;
+  const value = String(raw || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "");
+  if (!value || /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(value))
+    return null;
   try {
     const absolute = new URL(value, sourceUrl).href;
     const direct = indexes.exact.get(absolute);
     if (direct) return direct;
     const parsed = new URL(absolute);
-    return indexes.hostPath.get(`${parsed.hostname.replace(/^www\./, "")}${parsed.pathname}${parsed.search}`)
-      || indexes.hostPath.get(`${parsed.hostname.replace(/^www\./, "")}${parsed.pathname}`);
+    return (
+      indexes.hostPath.get(
+        `${parsed.hostname.replace(/^www\./, "")}${parsed.pathname}${parsed.search}`,
+      ) ||
+      indexes.hostPath.get(
+        `${parsed.hostname.replace(/^www\./, "")}${parsed.pathname}`,
+      )
+    );
   } catch {
     return null;
   }
@@ -996,17 +1375,38 @@ function resolveLocalReference(raw, sourceUrl, indexes) {
 
 function rewriteText(content, currentFile, sourceUrl, indexes, mime) {
   let result = content
-    .replace(/https?:\/\/web\.archive\.org\/web\/\d+(?:id_|im_|js_|cs_)?\/(https?:\/\/[^"'()\s<>]+)/gi, "$1")
-    .replace(/(?:https?:)?\/\/web\.archive\.org\/web\/\d+(?:id_|im_|js_|cs_)?\/(https?:\/\/[^"'()\s<>]+)/gi, "$1")
-    .replace(/<!--\s*BEGIN WAYBACK TOOLBAR INSERT[\s\S]*?END WAYBACK TOOLBAR INSERT\s*-->/gi, "")
-    .replace(/<script[^>]+src=["'][^"']*web-static\.archive\.org[^"']*["'][^>]*><\/script>/gi, "");
+    .replace(
+      /https?:\/\/web\.archive\.org\/web\/\d+(?:id_|im_|js_|cs_)?\/(https?:\/\/[^"'()\s<>]+)/gi,
+      "$1",
+    )
+    .replace(
+      /(?:https?:)?\/\/web\.archive\.org\/web\/\d+(?:id_|im_|js_|cs_)?\/(https?:\/\/[^"'()\s<>]+)/gi,
+      "$1",
+    )
+    .replace(
+      /<!--\s*BEGIN WAYBACK TOOLBAR INSERT[\s\S]*?END WAYBACK TOOLBAR INSERT\s*-->/gi,
+      "",
+    )
+    .replace(
+      /<script[^>]+src=["'][^"']*web-static\.archive\.org[^"']*["'][^>]*><\/script>/gi,
+      "",
+    );
 
   if (/html|xhtml|xml|svg/i.test(mime)) {
     result = result
       .replace(/<!--\s*FILE ARCHIVED ON[\s\S]*?-->/gi, "")
-      .replace(/<(?:script|link)\b[^>]*(?:web-static\.archive\.org|\/_static\/|wombat\.js|bundle-playback\.js|archive_analytics|ruffle\.js|banner-styles\.css|iconochive\.css)[^>]*>(?:[\s\S]*?<\/script>)?/gi, "")
-      .replace(/<script\b[^>]*>[\s\S]*?(?:__wm\.(?:init|bt)|archive_analytics)[\s\S]*?<\/script>/gi, "")
-      .replace(/<(?:div|section)\b[^>]*\bid=["']wm-ipp(?:-base)?["'][^>]*>[\s\S]*?<\/(?:div|section)>/gi, "");
+      .replace(
+        /<(?:script|link)\b[^>]*(?:web-static\.archive\.org|\/_static\/|wombat\.js|bundle-playback\.js|archive_analytics|ruffle\.js|banner-styles\.css|iconochive\.css)[^>]*>(?:[\s\S]*?<\/script>)?/gi,
+        "",
+      )
+      .replace(
+        /<script\b[^>]*>[\s\S]*?(?:__wm\.(?:init|bt)|archive_analytics)[\s\S]*?<\/script>/gi,
+        "",
+      )
+      .replace(
+        /<(?:div|section)\b[^>]*\bid=["']wm-ipp(?:-base)?["'][^>]*>[\s\S]*?<\/(?:div|section)>/gi,
+        "",
+      );
   }
 
   const replaceReference = (raw) => {
@@ -1015,83 +1415,134 @@ function rewriteText(content, currentFile, sourceUrl, indexes, mime) {
   };
 
   if (/css/i.test(mime)) {
-    result = result.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (all, quote, value) => {
-      const rewritten = replaceReference(value);
-      return `url(${quote}${rewritten}${quote})`;
-    });
-    result = result.replace(/(@import\s+(?:url\(\s*)?)(['"])([^'"]+)\2/gi, (all, prefix, quote, value) =>
-      `${prefix}${quote}${replaceReference(value)}${quote}`);
+    result = result.replace(
+      /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+      (all, quote, value) => {
+        const rewritten = replaceReference(value);
+        return `url(${quote}${rewritten}${quote})`;
+      },
+    );
+    result = result.replace(
+      /(@import\s+(?:url\(\s*)?)(['"])([^'"]+)\2/gi,
+      (all, prefix, quote, value) =>
+        `${prefix}${quote}${replaceReference(value)}${quote}`,
+    );
   } else if (/html|xhtml|xml|svg/i.test(mime)) {
-    result = result.replace(/\b(xlink:href|src|href|poster|action|data-src|data-lazy-src|data-original|data-url|data-bg|data-background|data-background-image)\s*=\s*(["'])(.*?)\2/gi,
-      (all, attr, quote, value) => `${attr}=${quote}${replaceReference(value)}${quote}`);
-    result = result.replace(/(<object\b[^>]*\bdata\s*=\s*)(["'])(.*?)\2/gi,
-      (all, prefix, quote, value) => `${prefix}${quote}${replaceReference(value)}${quote}`);
-    result = result.replace(/(<meta\b[^>]*(?:property|name)\s*=\s*["'](?:og:image(?::url|:secure_url)?|twitter:image)["'][^>]*\bcontent\s*=\s*)(["'])(.*?)\2/gi,
-      (all, prefix, quote, value) => `${prefix}${quote}${replaceReference(value)}${quote}`);
-    result = result.replace(/\b(srcset|data-srcset|data-lazy-srcset|data-bgset)\s*=\s*(["'])(.*?)\2/gi, (all, attr, quote, value) => {
-      const entries = value.split(",").map((part) => {
-        const pieces = part.trim().split(/\s+/);
-        pieces[0] = replaceReference(pieces[0]);
-        return pieces.join(" ");
-      });
-      return `${attr}=${quote}${entries.join(", ")}${quote}`;
-    });
-    result = result.replace(/style\s*=\s*(["'])(.*?)\1/gi, (all, quote, value) =>
-      `style=${quote}${value.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
-        (match, innerQuote, url) => `url(${innerQuote}${replaceReference(url)}${innerQuote})`)}${quote}`);
+    result = result.replace(
+      /\b(xlink:href|src|href|poster|action|data-src|data-lazy-src|data-original|data-url|data-bg|data-background|data-background-image)\s*=\s*(["'])(.*?)\2/gi,
+      (all, attr, quote, value) =>
+        `${attr}=${quote}${replaceReference(value)}${quote}`,
+    );
+    result = result.replace(
+      /(<object\b[^>]*\bdata\s*=\s*)(["'])(.*?)\2/gi,
+      (all, prefix, quote, value) =>
+        `${prefix}${quote}${replaceReference(value)}${quote}`,
+    );
+    result = result.replace(
+      /(<meta\b[^>]*(?:property|name)\s*=\s*["'](?:og:image(?::url|:secure_url)?|twitter:image)["'][^>]*\bcontent\s*=\s*)(["'])(.*?)\2/gi,
+      (all, prefix, quote, value) =>
+        `${prefix}${quote}${replaceReference(value)}${quote}`,
+    );
+    result = result.replace(
+      /\b(srcset|data-srcset|data-lazy-srcset|data-bgset)\s*=\s*(["'])(.*?)\2/gi,
+      (all, attr, quote, value) => {
+        const entries = value.split(",").map((part) => {
+          const pieces = part.trim().split(/\s+/);
+          pieces[0] = replaceReference(pieces[0]);
+          return pieces.join(" ");
+        });
+        return `${attr}=${quote}${entries.join(", ")}${quote}`;
+      },
+    );
+    result = result.replace(
+      /style\s*=\s*(["'])(.*?)\1/gi,
+      (all, quote, value) =>
+        `style=${quote}${value.replace(
+          /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+          (match, innerQuote, url) =>
+            `url(${innerQuote}${replaceReference(url)}${innerQuote})`,
+        )}${quote}`,
+    );
     result = result.replace(/<(img|source|iframe)\b[^>]*>/gi, (tag) => {
-      const lazySrc = tag.match(/\b(?:data-src|data-lazy-src|data-original|data-url)\s*=\s*(["'])(.*?)\1/i);
-      const lazySrcset = tag.match(/\b(?:data-srcset|data-lazy-srcset)\s*=\s*(["'])(.*?)\1/i);
+      const lazySrc = tag.match(
+        /\b(?:data-src|data-lazy-src|data-original|data-url)\s*=\s*(["'])(.*?)\1/i,
+      );
+      const lazySrcset = tag.match(
+        /\b(?:data-srcset|data-lazy-srcset)\s*=\s*(["'])(.*?)\1/i,
+      );
       const src = tag.match(/\bsrc\s*=\s*(["'])(.*?)\1/i);
       const srcset = tag.match(/\bsrcset\s*=\s*(["'])(.*?)\1/i);
-      const placeholder = !src || /^(?:data:image\/|about:blank|#|)$/i.test(src[2].trim());
+      const placeholder =
+        !src || /^(?:data:image\/|about:blank|#|)$/i.test(src[2].trim());
       if (lazySrc && placeholder) {
         tag = src
           ? tag.replace(src[0], `src=${src[1]}${lazySrc[2]}${src[1]}`)
-          : tag.replace(/\s*\/?>$/, (ending) => ` src="${lazySrc[2]}"${ending}`);
+          : tag.replace(
+              /\s*\/?>$/,
+              (ending) => ` src="${lazySrc[2]}"${ending}`,
+            );
       }
       if (lazySrcset && !srcset) {
-        tag = tag.replace(/\s*\/?>$/, (ending) => ` srcset="${lazySrcset[2]}"${ending}`);
+        tag = tag.replace(
+          /\s*\/?>$/,
+          (ending) => ` srcset="${lazySrcset[2]}"${ending}`,
+        );
       }
       return tag;
     });
-    result = result.replace(/<([a-z][\w:-]*)\b[^>]*\b(?:data-bg|data-background|data-background-image)\s*=\s*(["'])(.*?)\2[^>]*>/gi,
+    result = result.replace(
+      /<([a-z][\w:-]*)\b[^>]*\b(?:data-bg|data-background|data-background-image)\s*=\s*(["'])(.*?)\2[^>]*>/gi,
       (tag, element, quote, background) => {
         if (/\bstyle\s*=/i.test(tag)) {
-          return tag.replace(/\bstyle\s*=\s*(["'])(.*?)\1/i,
-            (all, styleQuote, style) => /background(?:-image)?\s*:/i.test(style)
-              ? all
-              : `style=${styleQuote}${style}${style.trim().endsWith(";") || !style.trim() ? "" : ";"}background-image:url('${background}')${styleQuote}`);
+          return tag.replace(
+            /\bstyle\s*=\s*(["'])(.*?)\1/i,
+            (all, styleQuote, style) =>
+              /background(?:-image)?\s*:/i.test(style)
+                ? all
+                : `style=${styleQuote}${style}${style.trim().endsWith(";") || !style.trim() ? "" : ";"}background-image:url('${background}')${styleQuote}`,
+          );
         }
-        return tag.replace(/\s*\/?>$/, (ending) => ` style="background-image:url('${background}')"${ending}`);
-      });
+        return tag.replace(
+          /\s*\/?>$/,
+          (ending) => ` style="background-image:url('${background}')"${ending}`,
+        );
+      },
+    );
   } else if (/javascript|json/i.test(mime)) {
-    result = result.replace(/(["'])(https?:\/\/[^"'\\\s]+|\/\/[^"'\\\s]+)\1/gi, (all, quote, value) => {
-      const rewritten = replaceReference(value);
-      return `${quote}${rewritten}${quote}`;
-    });
+    result = result.replace(
+      /(["'])(https?:\/\/[^"'\\\s]+|\/\/[^"'\\\s]+)\1/gi,
+      (all, quote, value) => {
+        const rewritten = replaceReference(value);
+        return `${quote}${rewritten}${quote}`;
+      },
+    );
   }
   result = result.replace(/<base\b[^>]*>/gi, "");
   return result;
 }
 
 function textEncoding(contentType, data) {
-  const headerMatch = String(contentType || "").match(/charset\s*=\s*["']?([^;"'\s]+)/i);
+  const headerMatch = String(contentType || "").match(
+    /charset\s*=\s*["']?([^;"'\s]+)/i,
+  );
   if (headerMatch) return headerMatch[1].toLowerCase();
-  const prefix = data.subarray(0, Math.min(data.length, 4096)).toString("latin1");
-  const metaMatch = prefix.match(/charset\s*=\s*["']?\s*([a-z0-9._-]+)/i)
-    || prefix.match(/content\s*=\s*["'][^"']*charset=([a-z0-9._-]+)/i);
+  const prefix = data
+    .subarray(0, Math.min(data.length, 4096))
+    .toString("latin1");
+  const metaMatch =
+    prefix.match(/charset\s*=\s*["']?\s*([a-z0-9._-]+)/i) ||
+    prefix.match(/content\s*=\s*["'][^"']*charset=([a-z0-9._-]+)/i);
   return metaMatch ? metaMatch[1].toLowerCase() : "utf-8";
 }
 
 function decodeText(data, contentType) {
   const aliases = {
     "windows-1251": "windows-1251",
-    "cp1251": "windows-1251",
+    cp1251: "windows-1251",
     "windows-1252": "windows-1252",
-    "cp1252": "windows-1252",
+    cp1252: "windows-1252",
     "iso-8859-1": "windows-1252",
-    "latin1": "windows-1252",
+    latin1: "windows-1252",
     "koi8-r": "koi8-r",
   };
   const declared = textEncoding(contentType, data);
@@ -1114,32 +1565,56 @@ function resourcePriority(mime, original) {
 function extractDependencies(content, sourceUrl) {
   const found = new Set();
   const patterns = [
-    { pattern: /\b(?:xlink:href|src|href|poster|data-src|data-lazy-src|data-original|data-url|data-bg|data-background|data-background-image)\s*=\s*["']([^"']+)["']/gi },
+    {
+      pattern:
+        /\b(?:xlink:href|src|href|poster|data-src|data-lazy-src|data-original|data-url|data-bg|data-background|data-background-image)\s*=\s*["']([^"']+)["']/gi,
+    },
     { pattern: /<object\b[^>]*\bdata\s*=\s*["']([^"']+)["']/gi },
-    { pattern: /<meta\b[^>]*(?:property|name)\s*=\s*["'](?:og:image(?::url|:secure_url)?|twitter:image)["'][^>]*\bcontent\s*=\s*["']([^"']+)["']/gi },
-    { pattern: /\b(?:srcset|data-srcset|data-lazy-srcset|data-bgset)\s*=\s*["']([^"']+)["']/gi, srcset: true },
+    {
+      pattern:
+        /<meta\b[^>]*(?:property|name)\s*=\s*["'](?:og:image(?::url|:secure_url)?|twitter:image)["'][^>]*\bcontent\s*=\s*["']([^"']+)["']/gi,
+    },
+    {
+      pattern:
+        /\b(?:srcset|data-srcset|data-lazy-srcset|data-bgset)\s*=\s*["']([^"']+)["']/gi,
+      srcset: true,
+    },
     { pattern: /url\(\s*["']?([^"')]+)["']?\s*\)/gi },
     { pattern: /@import\s+(?:url\(\s*)?["']([^"']+)["']/gi },
     { pattern: /\b(?:import|fetch)\s*\(\s*["']([^"']+)["']/gi },
     { pattern: /\bimport\s+[^"']*?from\s*["']([^"']+)["']/gi },
   ];
   let sourceHost = "";
-  try { sourceHost = new URL(sourceUrl).hostname.replace(/^www\./, ""); } catch {}
+  try {
+    sourceHost = new URL(sourceUrl).hostname.replace(/^www\./, "");
+  } catch {}
   for (const { pattern, srcset = false } of patterns) {
     for (const match of content.matchAll(pattern)) {
-      const captured = String(match[1] || "").replace(/&amp;/gi, "&").trim();
+      const captured = String(match[1] || "")
+        .replace(/&amp;/gi, "&")
+        .trim();
       const values = srcset
         ? captured.split(",").map((entry) => entry.trim().split(/\s+/)[0])
         : [captured];
       for (const raw of values) {
-        if (!raw || /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(raw)) continue;
-        if (/^\+|\\?['"]?\+|\+\s*$|(?:getImageData|settings\.|\.ImageSrc|\.ThumbSrc|(?:^|\/)[a-z]\.src$)/i.test(raw)) continue;
+        if (!raw || /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(raw))
+          continue;
+        if (
+          /^\+|\\?['"]?\+|\+\s*$|(?:getImageData|settings\.|\.ImageSrc|\.ThumbSrc|(?:^|\/)[a-z]\.src$)/i.test(
+            raw,
+          )
+        )
+          continue;
         try {
           const absolute = new URL(raw, sourceUrl);
           if (!/^https?:$/.test(absolute.protocol)) continue;
           if (/\/(?:[a-z]|g\.src)$/i.test(absolute.pathname)) continue;
-          const sameSite = absolute.hostname.replace(/^www\./, "") === sourceHost;
-          const looksLikeAsset = /\.(?:css|m?js|json|xml|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|eot|mp4|webm|mp3|ogg|pdf)(?:[?#]|$)/i.test(absolute.href);
+          const sameSite =
+            absolute.hostname.replace(/^www\./, "") === sourceHost;
+          const looksLikeAsset =
+            /\.(?:css|m?js|json|xml|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|eot|mp4|webm|mp3|ogg|pdf)(?:[?#]|$)/i.test(
+              absolute.href,
+            );
           if (sameSite || looksLikeAsset) found.add(absolute.href);
         } catch {}
       }
@@ -1148,7 +1623,14 @@ function extractDependencies(content, sourceUrl) {
   return [...found];
 }
 
-async function exactCandidates(original, timestamp, windowYears, alternatives, period = {}, fetchOptions = {}) {
+async function exactCandidates(
+  original,
+  timestamp,
+  windowYears,
+  alternatives,
+  period = {},
+  fetchOptions = {},
+) {
   const year = Number(timestamp.slice(0, 4));
   const periodFrom = String(period.from || "").replace(/\D/g, "");
   const periodTo = String(period.to || "").replace(/\D/g, "");
@@ -1160,11 +1642,18 @@ async function exactCandidates(original, timestamp, windowYears, alternatives, p
       try {
         const url = new URL(variant);
         const key = `${url.protocol}//${url.hostname}${url.pathname}`;
-        return all.findIndex((item) => {
-          const candidate = new URL(item);
-          return `${candidate.protocol}//${candidate.hostname}${candidate.pathname}` === key;
-        }) === index;
-      } catch { return true; }
+        return (
+          all.findIndex((item) => {
+            const candidate = new URL(item);
+            return (
+              `${candidate.protocol}//${candidate.hostname}${candidate.pathname}` ===
+              key
+            );
+          }) === index
+        );
+      } catch {
+        return true;
+      }
     })
     .slice(0, 4);
   for (const variant of usefulVariants) {
@@ -1181,7 +1670,10 @@ async function exactCandidates(original, timestamp, windowYears, alternatives, p
     try {
       for (const row of (await cdxQuick(params, fetchOptions)).slice(1)) {
         const key = `${row[0]}|${row[1]}|${row[4]}`;
-        if (!seen.has(key)) { seen.add(key); collected.push(row); }
+        if (!seen.has(key)) {
+          seen.add(key);
+          collected.push(row);
+        }
       }
       if (collected.length >= alternatives) break;
     } catch (error) {
@@ -1189,7 +1681,9 @@ async function exactCandidates(original, timestamp, windowYears, alternatives, p
     }
   }
   if (!collected.length && lastError) throw lastError;
-  return chooseClosest(collected, timestamp).slice(0, alternatives).map((item) => item.row);
+  return chooseClosest(collected, timestamp)
+    .slice(0, alternatives)
+    .map((item) => item.row);
 }
 
 function replayUrlVariants(original) {
@@ -1218,13 +1712,25 @@ function replayUrlVariants(original) {
 }
 
 function detectSiteProfile(rows = []) {
-  const corpus = rows.map((row) => String(row?.[1] || "")).join("\n").toLowerCase();
+  const corpus = rows
+    .map((row) => String(row?.[1] || ""))
+    .join("\n")
+    .toLowerCase();
   const profiles = [
-    ["xara", /(?:xr_main\.css|xr_text\.css|xr_fonts\.css|index_htm_files\/|\/roe\.js|\/ani\.css)/],
+    [
+      "xara",
+      /(?:xr_main\.css|xr_text\.css|xr_fonts\.css|index_htm_files\/|\/roe\.js|\/ani\.css)/,
+    ],
     ["webplus", /\/(?:wpimages|wpscripts)\/|\/wpstyles\.css/],
-    ["joomla", /\/(?:media\/system|media\/jui|components\/com_|templates\/system)\//],
+    [
+      "joomla",
+      /\/(?:media\/system|media\/jui|components\/com_|templates\/system)\//,
+    ],
     ["wordpress", /\/wp-(?:content|includes|admin)\//],
-    ["quickcart", /\/(?:templates\/[^/]+|core\/common|database\/config)\.(?:php|js|css)|quick\.cart/],
+    [
+      "quickcart",
+      /\/(?:templates\/[^/]+|core\/common|database\/config)\.(?:php|js|css)|quick\.cart/,
+    ],
     ["opencart", /\/catalog\/view\/(?:javascript|theme)\//],
     ["prestashop", /\/(?:themes\/[^/]+\/assets|modules\/[^/]+\/views)\//],
   ];
@@ -1233,7 +1739,11 @@ function detectSiteProfile(rows = []) {
 
 function cmsAlternativeUrls(original, profile, hostname) {
   let parsed;
-  try { parsed = new URL(original); } catch { return []; }
+  try {
+    parsed = new URL(original);
+  } catch {
+    return [];
+  }
   const basename = path.posix.basename(parsed.pathname);
   const directory = path.posix.dirname(parsed.pathname);
   const paths = new Set([parsed.pathname]);
@@ -1244,13 +1754,25 @@ function cmsAlternativeUrls(original, profile, hostname) {
       `${directory}/index_htm_files/${basename}`,
       `${directory.replace(/\/index_htm_files$/i, "")}/${basename}`,
       `/assets/${basename}`,
-    ]) paths.add(candidate.replace(/\/+/g, "/"));
+    ])
+      paths.add(candidate.replace(/\/+/g, "/"));
   } else if (profile === "joomla") {
-    for (const base of ["/media/system/css", "/media/system/js", "/media/jui/css", "/media/jui/js", "/templates/system/css"]) {
+    for (const base of [
+      "/media/system/css",
+      "/media/system/js",
+      "/media/jui/css",
+      "/media/jui/js",
+      "/templates/system/css",
+    ]) {
       paths.add(`${base}/${basename}`);
     }
   } else if (profile === "wordpress") {
-    for (const base of ["/wp-includes/css", "/wp-includes/js", "/wp-content/themes", "/wp-content/plugins"]) {
+    for (const base of [
+      "/wp-includes/css",
+      "/wp-includes/js",
+      "/wp-content/themes",
+      "/wp-content/plugins",
+    ]) {
       paths.add(`${base}/${basename}`);
     }
   } else if (profile === "opencart") {
@@ -1285,18 +1807,35 @@ function buildFilenameSnapshotIndex(rows = []) {
   return index;
 }
 
-function filenameSnapshotCandidates(original, filenameIndex, timestamp, maximum = 10) {
+function filenameSnapshotCandidates(
+  original,
+  filenameIndex,
+  timestamp,
+  maximum = 10,
+) {
   try {
     const name = path.posix.basename(new URL(original).pathname).toLowerCase();
-    return chooseClosest(filenameIndex.get(name) || [], timestamp).slice(0, maximum).map((item) => item.row);
+    return chooseClosest(filenameIndex.get(name) || [], timestamp)
+      .slice(0, maximum)
+      .map((item) => item.row);
   } catch {
     return [];
   }
 }
 
-async function searchFilenameAcrossDomain(original, hostname, timestamp, maximum = 20, fetchOptions = {}) {
+async function searchFilenameAcrossDomain(
+  original,
+  hostname,
+  timestamp,
+  maximum = 20,
+  fetchOptions = {},
+) {
   let filename;
-  try { filename = path.posix.basename(new URL(original).pathname); } catch { return []; }
+  try {
+    filename = path.posix.basename(new URL(original).pathname);
+  } catch {
+    return [];
+  }
   if (!filename) return [];
   const escaped = filename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rows = [];
@@ -1315,21 +1854,36 @@ async function searchFilenameAcrossDomain(original, hostname, timestamp, maximum
     try {
       for (const row of (await cdxQuick(params, fetchOptions)).slice(1)) {
         const key = `${row[0]}|${row[1]}|${row[4]}`;
-        if (!seen.has(key)) { seen.add(key); rows.push(row); }
+        if (!seen.has(key)) {
+          seen.add(key);
+          rows.push(row);
+        }
       }
     } catch {}
   }
-  return chooseClosest(rows, timestamp).slice(0, maximum).map((item) => item.row);
+  return chooseClosest(rows, timestamp)
+    .slice(0, maximum)
+    .map((item) => item.row);
 }
 
 function failureDiagnostics(errors = [], strategies = []) {
-  const network = errors.some((error) => error?.networkRelated || error?.temporary || isNetworkError(error));
-  const statuses = errors.map((error) => Number(error?.httpStatus)).filter(Boolean);
+  const network = errors.some(
+    (error) =>
+      error?.networkRelated || error?.temporary || isNetworkError(error),
+  );
+  const statuses = errors
+    .map((error) => Number(error?.httpStatus))
+    .filter(Boolean);
   let reason = "all recovery strategies exhausted";
   if (network) reason = "Wayback timeout or temporary network failure";
   else if (!errors.length) reason = "no CDX snapshot";
-  else if (statuses.length && statuses.every((status) => status === 404)) reason = "not archived";
-  else if (strategies.includes("filename-domain") && !strategies.includes("filename-domain-hit")) reason = "filename not found";
+  else if (statuses.length && statuses.every((status) => status === 404))
+    reason = "not archived";
+  else if (
+    strategies.includes("filename-domain") &&
+    !strategies.includes("filename-domain-hit")
+  )
+    reason = "filename not found";
   return {
     reason,
     strategiesTried: [...new Set(strategies)],
@@ -1341,15 +1895,25 @@ async function fetchDirectReplay(original, timestamp, options = {}) {
   const errors = [];
   for (const variant of replayUrlVariants(original)) {
     try {
-      const response = await fetchRetry(`https://web.archive.org/web/${timestamp}id_/${variant}`, options, 5, 25000);
+      const response = await fetchRetry(
+        `https://web.archive.org/web/${timestamp}id_/${variant}`,
+        options,
+        5,
+        25000,
+      );
       if (!response.ok) throw httpFailure(response);
       return { response, variant };
     } catch (error) {
       errors.push(error);
     }
   }
-  const failure = new Error(errors.map((error) => error.message).join("; ") || "прямий replay не знайшов копію");
-  failure.networkRelated = errors.some((error) => error.networkRelated || isNetworkError(error));
+  const failure = new Error(
+    errors.map((error) => error.message).join("; ") ||
+      "прямий replay не знайшов копію",
+  );
+  failure.networkRelated = errors.some(
+    (error) => error.networkRelated || isNetworkError(error),
+  );
   failure.temporary = errors.some((error) => error.temporary);
   throw failure;
 }
@@ -1357,7 +1921,11 @@ async function fetchDirectReplay(original, timestamp, options = {}) {
 function auditOutput(root, manifest) {
   const broken = [];
   const external = new Set();
-  const textFiles = manifest.filter((item) => isSuccessfulResource(item) && /html|css|javascript|json|xml|svg|text/i.test(item.mime));
+  const textFiles = manifest.filter(
+    (item) =>
+      isSuccessfulResource(item) &&
+      /html|css|javascript|json|xml|svg|text/i.test(item.mime),
+  );
   for (const item of textFiles) {
     const file = path.join(root, ...item.local.split("/"));
     if (!fs.existsSync(file)) continue;
@@ -1368,15 +1936,24 @@ function auditOutput(root, manifest) {
         ? /\b(?:src|href|poster|data-src|data-lazy-src|data-original|data-url|data-bg|data-background|data-background-image|srcset|data-srcset|data-lazy-srcset|data-bgset)\s*=\s*["']([^"']+)["']/gi
         : /(["'])(https?:\/\/[^"'\\\s]+|\/\/[^"'\\\s]+)\1/gi;
     for (const match of content.matchAll(referencePattern)) {
-      const reference = (/javascript|json/i.test(item.mime) ? match[2] : (match[1] || match[2] || "")).trim();
-      if (!reference || /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(reference)) continue;
+      const reference = (
+        /javascript|json/i.test(item.mime)
+          ? match[2]
+          : match[1] || match[2] || ""
+      ).trim();
+      if (
+        !reference ||
+        /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(reference)
+      )
+        continue;
       if (/^(?:https?:)?\/\//i.test(reference)) {
         external.add(reference);
         continue;
       }
-      const references = /\bsrcset|data-srcset|data-lazy-srcset|data-bgset/i.test(match[0])
-        ? reference.split(",").map((entry) => entry.trim().split(/\s+/)[0])
-        : [reference];
+      const references =
+        /\bsrcset|data-srcset|data-lazy-srcset|data-bgset/i.test(match[0])
+          ? reference.split(",").map((entry) => entry.trim().split(/\s+/)[0])
+          : [reference];
       for (const candidateReference of references) {
         const clean = candidateReference.split(/[?#]/)[0];
         if (!clean) continue;
@@ -1384,14 +1961,22 @@ function auditOutput(root, manifest) {
           ? path.resolve(root, clean.replace(/^[/\\]+/, ""))
           : path.resolve(path.dirname(file), clean);
         if (!target.startsWith(path.resolve(root))) continue;
-        const alternatives = [target, path.join(target, "index.html"), `${target}.html`];
+        const alternatives = [
+          target,
+          path.join(target, "index.html"),
+          `${target}.html`,
+        ];
         if (!alternatives.some((candidate) => fs.existsSync(candidate))) {
           broken.push({ source: item.local, reference: candidateReference });
         }
       }
     }
   }
-  return { broken: broken.slice(0, 2000), brokenCount: broken.length, external: [...external].slice(0, 2000) };
+  return {
+    broken: broken.slice(0, 2000),
+    brokenCount: broken.length,
+    external: [...external].slice(0, 2000),
+  };
 }
 
 const LEGACY_SLIDER_JS = `"use strict";
@@ -1522,29 +2107,51 @@ const LEGACY_SLIDER_CSS = `/* 773 deterministic fallback for legacy TCImageTabbe
 `;
 
 function repairLegacyWidgets(root, manifest = []) {
-  const htmlItems = manifest.filter((item) =>
-    isSuccessfulResource(item) && item.local && /html|xhtml/i.test(item.mime || "")
+  const htmlItems = manifest.filter(
+    (item) =>
+      isSuccessfulResource(item) &&
+      item.local &&
+      /html|xhtml/i.test(item.mime || ""),
   );
   let repairedPages = 0;
   for (const item of htmlItems) {
     const file = path.join(root, ...item.local.split("/"));
     if (!fs.existsSync(file)) continue;
     let content = fs.readFileSync(file, "utf8");
-    if (!/(?:id=["']tc-tabber["']|class=["'][^"']*\btc-tabber\b)/i.test(content)) continue;
+    if (
+      !/(?:id=["']tc-tabber["']|class=["'][^"']*\btc-tabber\b)/i.test(content)
+    )
+      continue;
 
-    content = content.replace(/<img\b([^>]*\bclass=["'][^"']*\btc-image\b[^>]*)>/gi, (tag, attributes) => {
-      if (/\bsrc\s*=/i.test(attributes)) return tag;
-      const lazy = attributes.match(/\b(?:data-src|data-lazy-src|data-original|title)\s*=\s*(["'])(.*?)\1/i);
-      return lazy && lazy[2] ? tag.replace(/<img\b/i, `<img src="${lazy[2].replace(/"/g, "&quot;")}"`) : tag;
-    });
+    content = content.replace(
+      /<img\b([^>]*\bclass=["'][^"']*\btc-image\b[^>]*)>/gi,
+      (tag, attributes) => {
+        if (/\bsrc\s*=/i.test(attributes)) return tag;
+        const lazy = attributes.match(
+          /\b(?:data-src|data-lazy-src|data-original|title)\s*=\s*(["'])(.*?)\1/i,
+        );
+        return lazy && lazy[2]
+          ? tag.replace(
+              /<img\b/i,
+              `<img src="${lazy[2].replace(/"/g, "&quot;")}"`,
+            )
+          : tag;
+      },
+    );
 
     const cssLink = relativeLink(item.local, "_773/legacy-slider.css");
     const jsLink = relativeLink(item.local, "_773/legacy-slider.js");
     if (!content.includes("legacy-slider.css")) {
-      content = content.replace(/<\/head\s*>/i, `<link rel="stylesheet" href="${cssLink}" data-restorer="773-slider" />\n</head>`);
+      content = content.replace(
+        /<\/head\s*>/i,
+        `<link rel="stylesheet" href="${cssLink}" data-restorer="773-slider" />\n</head>`,
+      );
     }
     if (!content.includes("legacy-slider.js")) {
-      content = content.replace(/<\/body\s*>/i, `<script src="${jsLink}" defer data-restorer="773-slider"></script>\n</body>`);
+      content = content.replace(
+        /<\/body\s*>/i,
+        `<script src="${jsLink}" defer data-restorer="773-slider"></script>\n</body>`,
+      );
     }
     fs.writeFileSync(file, content, "utf8");
     repairedPages += 1;
@@ -1554,15 +2161,32 @@ function repairLegacyWidgets(root, manifest = []) {
   const assetDir = path.join(root, "_773");
   fs.mkdirSync(assetDir, { recursive: true });
   let generatedOrigin = "https://restored.local";
-  const sourceItem = manifest.find((item) => /^https?:\/\//i.test(item.original || ""));
+  const sourceItem = manifest.find((item) =>
+    /^https?:\/\//i.test(item.original || ""),
+  );
   if (sourceItem) {
-    try { generatedOrigin = new URL(sourceItem.original).origin; } catch {}
+    try {
+      generatedOrigin = new URL(sourceItem.original).origin;
+    } catch {}
   }
   const generated = [
-    { local: "_773/legacy-slider.js", mime: "application/javascript", data: LEGACY_SLIDER_JS },
-    { local: "_773/legacy-slider.css", mime: "text/css", data: LEGACY_SLIDER_CSS },
+    {
+      local: "_773/legacy-slider.js",
+      mime: "application/javascript",
+      data: LEGACY_SLIDER_JS,
+    },
+    {
+      local: "_773/legacy-slider.css",
+      mime: "text/css",
+      data: LEGACY_SLIDER_CSS,
+    },
   ];
-  for (const asset of generated) fs.writeFileSync(path.join(root, ...asset.local.split("/")), asset.data, "utf8");
+  for (const asset of generated)
+    fs.writeFileSync(
+      path.join(root, ...asset.local.split("/")),
+      asset.data,
+      "utf8",
+    );
   return {
     repairedPages,
     generated: generated.map((asset) => ({
@@ -1579,9 +2203,17 @@ function repairLegacyWidgets(root, manifest = []) {
 }
 
 function escapeHtml(value) {
-  return String(value || "").replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  })[character]);
+  return String(value || "").replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character],
+  );
 }
 
 function repairMissingTextImages(root) {
@@ -1604,19 +2236,30 @@ function repairMissingTextImages(root) {
     let changed = false;
     if (content.includes("restorer-missing-text-image")) {
       hasFallbacks = true;
-      fallbackImages += content.match(/\bclass=["'][^"']*restorer-missing-text-image/gi)?.length || 0;
+      fallbackImages +=
+        content.match(/\bclass=["'][^"']*restorer-missing-text-image/gi)
+          ?.length || 0;
       const normalized = content.replace(
         /(<span\b[^>]*\bclass=["'][^"']*restorer-missing-text-image[^"']*["'][^>]*>)([\s\S]*?)(<\/span>)/gi,
-        (all, opening, text, closing) => `${opening}${text.replace(/&amp;amp;/gi, "&amp;")}${closing}`
+        (all, opening, text, closing) =>
+          `${opening}${text.replace(/&amp;amp;/gi, "&amp;")}${closing}`,
       );
-      if (normalized !== content) { content = normalized; changed = true; }
+      if (normalized !== content) {
+        content = normalized;
+        changed = true;
+      }
     }
     content = content.replace(/<img\b[^>]*>/gi, (tag) => {
       const source = tag.match(/\bsrc\s*=\s*(["'])(.*?)\1/i)?.[2];
       const alt = tag.match(/\balt\s*=\s*(["'])(.*?)\1/i)?.[2];
-      if (!source || !alt || /^(?:data:|https?:|\/\/)/i.test(source)) return tag;
-      const target = path.resolve(path.dirname(file), source.split(/[?#]/)[0].replace(/\//g, path.sep));
-      if (!target.startsWith(path.resolve(root)) || fs.existsSync(target)) return tag;
+      if (!source || !alt || /^(?:data:|https?:|\/\/)/i.test(source))
+        return tag;
+      const target = path.resolve(
+        path.dirname(file),
+        source.split(/[?#]/)[0].replace(/\//g, path.sep),
+      );
+      if (!target.startsWith(path.resolve(root)) || fs.existsSync(target))
+        return tag;
       const style = tag.match(/\bstyle\s*=\s*(["'])(.*?)\1/i)?.[2] || "";
       changed = true;
       hasFallbacks = true;
@@ -1627,8 +2270,10 @@ function repairMissingTextImages(root) {
     });
     if (!changed) continue;
     if (!content.includes("missing-assets.css")) {
-      content = content.replace(/<\/head\s*>/i,
-        `<link rel="stylesheet" href="${relativeLink(path.relative(root, file).replace(/\\/g, "/"), "_773/missing-assets.css")}" data-restorer="773-missing-assets" />\n</head>`);
+      content = content.replace(
+        /<\/head\s*>/i,
+        `<link rel="stylesheet" href="${relativeLink(path.relative(root, file).replace(/\\/g, "/"), "_773/missing-assets.css")}" data-restorer="773-missing-assets" />\n</head>`,
+      );
     }
     fs.writeFileSync(file, content, "utf8");
     repairedPages += 1;
@@ -1636,12 +2281,16 @@ function repairMissingTextImages(root) {
   if (hasFallbacks) {
     const assetDir = path.join(root, "_773");
     fs.mkdirSync(assetDir, { recursive: true });
-    fs.writeFileSync(path.join(assetDir, "missing-assets.css"), [
-      "/* 773 deterministic fallback for archived text rendered as missing images */",
-      ".restorer-missing-text-image{box-sizing:border-box;display:flex;align-items:center;justify-content:center;",
-      "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1;color:#202020;",
-      "text-align:center;white-space:nowrap;overflow:hidden}",
-    ].join(""), "utf8");
+    fs.writeFileSync(
+      path.join(assetDir, "missing-assets.css"),
+      [
+        "/* 773 deterministic fallback for archived text rendered as missing images */",
+        ".restorer-missing-text-image{box-sizing:border-box;display:flex;align-items:center;justify-content:center;",
+        "font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1;color:#202020;",
+        "text-align:center;white-space:nowrap;overflow:hidden}",
+      ].join(""),
+      "utf8",
+    );
   }
   return { repairedImages, repairedPages, fallbackImages, repairedReferences };
 }
@@ -1650,16 +2299,21 @@ function repairCompletedProject(target) {
   const modernSite = path.join(target, "site");
   const siteRoot = fs.existsSync(modernSite) ? modernSite : target;
   const reportFile = reportPathFor(target);
-  if (!fs.existsSync(reportFile)) throw new Error("Звіт завершеного проєкту не знайдено.");
+  if (!fs.existsSync(reportFile))
+    throw new Error("Звіт завершеного проєкту не знайдено.");
   const report = JSON.parse(fs.readFileSync(reportFile, "utf8"));
   const manifest = Array.isArray(report.files) ? report.files : [];
   const result = repairLegacyWidgets(siteRoot, manifest);
   const missingTextRepair = repairMissingTextImages(siteRoot);
   const generatedLocals = new Set(result.generated.map((item) => item.local));
-  report.files = manifest.filter((item) => !generatedLocals.has(item.local)).concat(result.generated);
+  report.files = manifest
+    .filter((item) => !generatedLocals.has(item.local))
+    .concat(result.generated);
   report.total = report.files.length;
   report.downloaded = report.files.filter(isSuccessfulResource).length;
-  report.failed = report.files.filter((item) => !isSuccessfulResource(item)).length;
+  report.failed = report.files.filter(
+    (item) => !isSuccessfulResource(item),
+  ).length;
   report.audit = auditOutput(siteRoot, report.files);
   report.lastRepair = {
     completedAt: new Date().toISOString(),
@@ -1670,19 +2324,45 @@ function repairCompletedProject(target) {
   };
   fs.writeFileSync(reportFile, JSON.stringify(report, null, 2), "utf8");
 
-  const reportsDir = fs.existsSync(modernSite) ? path.join(target, "reports") : target;
-  fs.writeFileSync(path.join(reportsDir, "errors.json"), JSON.stringify({
-    failed: report.files.filter((item) => !isSuccessfulResource(item)),
-    broken: report.audit.broken,
-    external: report.audit.external,
-  }, null, 2), "utf8");
+  const reportsDir = fs.existsSync(modernSite)
+    ? path.join(target, "reports")
+    : target;
+  fs.writeFileSync(
+    path.join(reportsDir, "errors.json"),
+    JSON.stringify(
+      {
+        failed: report.files.filter((item) => !isSuccessfulResource(item)),
+        broken: report.audit.broken,
+        external: report.audit.external,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
 
-  const packagesDir = fs.existsSync(modernSite) ? path.join(target, "packages") : target;
+  const packagesDir = fs.existsSync(modernSite)
+    ? path.join(target, "packages")
+    : target;
   fs.mkdirSync(packagesDir, { recursive: true });
   const domain = report.domain || path.basename(path.dirname(target));
-  createZip(siteRoot, path.join(packagesDir, `${safeName(domain)}-${report.requestedTimestamp || "restored"}-site.zip`));
-  const nativeZip = path.join(packagesDir, `${safeName(domain)}-archivarix-native-v4.zip`);
-  const nativeResult = createNativeArchivarixPackage(siteRoot, reportFile, nativeZip, domain);
+  createZip(
+    siteRoot,
+    path.join(
+      packagesDir,
+      `${safeName(domain)}-${report.requestedTimestamp || "restored"}-site.zip`,
+    ),
+  );
+  const nativeZip = path.join(
+    packagesDir,
+    `${safeName(domain)}-archivarix-native-v4.zip`,
+  );
+  const nativeResult = createNativeArchivarixPackage(
+    siteRoot,
+    reportFile,
+    nativeZip,
+    domain,
+  );
   return {
     ok: true,
     repairedPages: result.repairedPages,
@@ -1698,7 +2378,8 @@ function crc32(buffer) {
   let crc = 0xffffffff;
   for (const byte of buffer) {
     crc ^= byte;
-    for (let k = 0; k < 8; k += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    for (let k = 0; k < 8; k += 1)
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -1709,7 +2390,11 @@ function createZip(root, destination, options = {}) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (path.resolve(full) !== path.resolve(destination) && !options.exclude?.(full)) files.push(full);
+      else if (
+        path.resolve(full) !== path.resolve(destination) &&
+        !options.exclude?.(full)
+      )
+        files.push(full);
     }
   };
   walk(root);
@@ -1722,44 +2407,77 @@ function createZip(root, destination, options = {}) {
     const data = fs.readFileSync(full);
     const crc = crc32(data);
     const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x800, 6);
-    local.writeUInt16LE(0, 8); local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x800, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
     localParts.push(local, nameBuf, data);
     const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0x800, 8); central.writeUInt16LE(0, 10); central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(nameBuf.length, 28); central.writeUInt32LE(offset, 42);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x800, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
     centralParts.push(central, nameBuf);
     offset += local.length + nameBuf.length + data.length;
   }
   const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
   const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
-  end.writeUInt32LE(centralSize, 12); end.writeUInt32LE(offset, 16);
-  fs.writeFileSync(destination, Buffer.concat([...localParts, ...centralParts, end]));
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  fs.writeFileSync(
+    destination,
+    Buffer.concat([...localParts, ...centralParts, end]),
+  );
 }
 
 function extractStoredZip(buffer, destination) {
   let offset = 0;
   let files = 0;
   fs.mkdirSync(destination, { recursive: true });
-  while (offset + 30 <= buffer.length && buffer.readUInt32LE(offset) === 0x04034b50) {
+  while (
+    offset + 30 <= buffer.length &&
+    buffer.readUInt32LE(offset) === 0x04034b50
+  ) {
     const method = buffer.readUInt16LE(offset + 8);
     const compressedSize = buffer.readUInt32LE(offset + 18);
     const nameLength = buffer.readUInt16LE(offset + 26);
     const extraLength = buffer.readUInt16LE(offset + 28);
-    if (method !== 0) throw new Error("Підтримуються лише ZIP-пакети, створені цією програмою.");
+    if (method !== 0)
+      throw new Error(
+        "Підтримуються лише ZIP-пакети, створені цією програмою.",
+      );
     const nameStart = offset + 30;
     const dataStart = nameStart + nameLength + extraLength;
-    const name = buffer.subarray(nameStart, nameStart + nameLength).toString("utf8").replace(/\\/g, "/");
+    const name = buffer
+      .subarray(nameStart, nameStart + nameLength)
+      .toString("utf8")
+      .replace(/\\/g, "/");
     const target = path.resolve(destination, ...name.split("/"));
-    if (!name || path.isAbsolute(name) || !target.startsWith(`${path.resolve(destination)}${path.sep}`)) {
+    if (
+      !name ||
+      path.isAbsolute(name) ||
+      !target.startsWith(`${path.resolve(destination)}${path.sep}`)
+    ) {
       throw new Error("ZIP містить небезпечний шлях.");
     }
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, buffer.subarray(dataStart, dataStart + compressedSize));
+    fs.writeFileSync(
+      target,
+      buffer.subarray(dataStart, dataStart + compressedSize),
+    );
     files += 1;
     offset = dataStart + compressedSize;
   }
@@ -1787,15 +2505,24 @@ async function runJob(job, options) {
   job.status = "running";
   const { hostname } = normalizeTarget(options.domain);
   const timestamp = String(options.timestamp || "").replace(/\D/g, "");
-  if (!/^\d{8,14}$/.test(timestamp)) throw new Error("Спочатку виберіть дату снапшота.");
+  if (!/^\d{8,14}$/.test(timestamp))
+    throw new Error("Спочатку виберіть дату снапшота.");
   const limit = Math.max(10, Math.min(10000, Number(options.limit) || 2000));
-  const concurrency = Math.max(1, Math.min(6, Number(options.concurrency) || 3));
-  const completeness = ["quick", "balanced", "maximum"].includes(options.completeness)
-    ? options.completeness : "maximum";
+  const concurrency = Math.max(
+    1,
+    Math.min(6, Number(options.concurrency) || 3),
+  );
+  const completeness = ["quick", "balanced", "maximum"].includes(
+    options.completeness,
+  )
+    ? options.completeness
+    : "maximum";
   const useAssetCache = options.useAssetCache !== false;
   const allowCdnFallback = options.allowCdnFallback !== false;
-  const windowYears = completeness === "quick" ? 0 : completeness === "balanced" ? 1 : 5;
-  const alternatives = completeness === "quick" ? 3 : completeness === "balanced" ? 5 : 10;
+  const windowYears =
+    completeness === "quick" ? 0 : completeness === "balanced" ? 1 : 5;
+  const alternatives =
+    completeness === "quick" ? 3 : completeness === "balanced" ? 5 : 10;
   const period = { from: options.fromDate || "", to: options.toDate || "" };
   const domainFolder = safeName(hostname);
   const runFolder = `${timestampFolder(timestamp)}_${String(Date.now()).slice(-6)}`;
@@ -1812,12 +2539,16 @@ async function runJob(job, options) {
     }
     fs.mkdirSync(outputDir, { recursive: true });
   } catch (error) {
-    if (path.resolve(activeRoot) === path.resolve(DEFAULT_OUTPUT_ROOT)) throw error;
+    if (path.resolve(activeRoot) === path.resolve(DEFAULT_OUTPUT_ROOT))
+      throw error;
     activeRoot = DEFAULT_OUTPUT_ROOT;
     projectDir = path.join(activeRoot, domainFolder, runFolder);
     outputDir = path.join(projectDir, "site");
     fs.mkdirSync(outputDir, { recursive: true });
-    log(job, `Папка ${OUTPUT_ROOT} недоступна (${error.code || error.message}); використовую стандартну: ${DEFAULT_OUTPUT_ROOT}`);
+    log(
+      job,
+      `Папка ${OUTPUT_ROOT} недоступна (${error.code || error.message}); використовую стандартну: ${DEFAULT_OUTPUT_ROOT}`,
+    );
   }
   OUTPUT_ROOT = activeRoot;
   job.outputFolder = folder;
@@ -1828,28 +2559,56 @@ async function runJob(job, options) {
   job.phase = "inventory";
   log(job, `Отримую перелік файлів для ${hostname} на ${timestamp}`);
   let rows = [];
-  if (options.snapshotSource === "local-library" || options.snapshotSource === "local-project") {
+  if (
+    options.snapshotSource === "local-library" ||
+    options.snapshotSource === "local-project"
+  ) {
     rows = inventoryFromLocal(hostname, timestamp, limit);
-    log(job, `Локальний запуск без CDX: ${rows.length} ресурсів із бібліотеки та попередніх звітів`);
+    log(
+      job,
+      `Локальний запуск без CDX: ${rows.length} ресурсів із бібліотеки та попередніх звітів`,
+    );
   } else {
     try {
-      rows = await inventory(hostname, timestamp, Boolean(options.includeSubdomains), limit, windowYears, period);
+      rows = await inventory(
+        hostname,
+        timestamp,
+        Boolean(options.includeSubdomains),
+        limit,
+        windowYears,
+        period,
+      );
     } catch (error) {
       log(job, `CDX недоступний: ${error.message}`);
       rows = inventoryFromLocal(hostname, timestamp, limit);
-      if (rows.length) log(job, `Резервний режим: використовую ${rows.length} ресурсів із локальної бібліотеки та попередніх звітів`);
+      if (rows.length)
+        log(
+          job,
+          `Резервний режим: використовую ${rows.length} ресурсів із локальної бібліотеки та попередніх звітів`,
+        );
       else throw error;
     }
   }
   if (!rows.length && windowYears < 5) {
     log(job, "Розширюю часовий діапазон пошуку до ±5 років");
-    rows = await inventory(hostname, timestamp, Boolean(options.includeSubdomains), limit, 5, period);
+    rows = await inventory(
+      hostname,
+      timestamp,
+      Boolean(options.includeSubdomains),
+      limit,
+      5,
+      period,
+    );
   }
-  if (!rows.length) throw new Error("На цю дату файлів не знайдено. Оберіть інший снапшот.");
+  if (!rows.length)
+    throw new Error("На цю дату файлів не знайдено. Оберіть інший снапшот.");
   const siteProfile = detectSiteProfile(rows);
   const filenameIndex = buildFilenameSnapshotIndex(rows);
   job.siteProfile = siteProfile;
-  log(job, `Профіль відновлення: ${siteProfile}; індекс імен: ${filenameIndex.size}`);
+  log(
+    job,
+    `Профіль відновлення: ${siteProfile}; індекс імен: ${filenameIndex.size}`,
+  );
   const selected = new Map();
   for (const item of chooseClosest(rows, timestamp)) {
     const [, original, mime] = item.row;
@@ -1858,8 +2617,13 @@ async function runJob(job, options) {
     const candidates = selected.get(key);
     if (candidates.length < alternatives) candidates.push(item.row);
   }
-  const files = [...selected.values()].map((candidates) => ({ primary: candidates[0], candidates }))
-    .sort((a, b) => resourcePriority(a.primary[2], a.primary[1]) - resourcePriority(b.primary[2], b.primary[1]))
+  const files = [...selected.values()]
+    .map((candidates) => ({ primary: candidates[0], candidates }))
+    .sort(
+      (a, b) =>
+        resourcePriority(a.primary[2], a.primary[1]) -
+        resourcePriority(b.primary[2], b.primary[1]),
+    )
     .slice(0, limit);
   job.total = files.length;
   log(job, `Знайдено ${files.length} унікальних ресурсів`);
@@ -1867,16 +2631,26 @@ async function runJob(job, options) {
   for (const file of files) {
     const [, original, mime] = file.primary;
     const local = outputPathFor(original, mime, hostname);
-    for (const [, candidateUrl] of file.candidates) urlMap.set(candidateUrl, local);
+    for (const [, candidateUrl] of file.candidates)
+      urlMap.set(candidateUrl, local);
   }
   const urlIndexes = buildUrlIndexes(urlMap);
   const typeCounts = files.reduce((counts, file) => {
     const mime = file.primary[2] || "unknown";
-    const type = /css/i.test(mime) ? "css" : /javascript/i.test(mime) ? "js" : /html/i.test(mime) ? "html" : "asset";
+    const type = /css/i.test(mime)
+      ? "css"
+      : /javascript/i.test(mime)
+        ? "js"
+        : /html/i.test(mime)
+          ? "html"
+          : "asset";
     counts[type] = (counts[type] || 0) + 1;
     return counts;
   }, {});
-  log(job, `Склад: HTML ${typeCounts.html || 0}, CSS ${typeCounts.css || 0}, JS ${typeCounts.js || 0}, інші ${typeCounts.asset || 0}`);
+  log(
+    job,
+    `Склад: HTML ${typeCounts.html || 0}, CSS ${typeCounts.css || 0}, JS ${typeCounts.js || 0}, інші ${typeCounts.asset || 0}`,
+  );
   let cursor = 0;
   job.phase = "download";
   const manifest = [];
@@ -1893,7 +2667,10 @@ async function runJob(job, options) {
       const retryOptions = {
         retryBudget,
         onRetry: ({ retry, maximumRetries, delay, error }) =>
-          log(job, `Мережева помилка; повтор ${retry}/${maximumRetries} через ${delay / 1000} с: ${original} (${error.cause?.code || error.code || error.message})`),
+          log(
+            job,
+            `Мережева помилка; повтор ${retry}/${maximumRetries} через ${delay / 1000} с: ${original} (${error.cause?.code || error.code || error.message})`,
+          ),
       };
       try {
         let response = null;
@@ -1903,11 +2680,19 @@ async function runJob(job, options) {
         const attemptErrors = [];
         const archiveErrors = [];
         for (const candidate of file.candidates) {
-          const [candidateStamp, candidateUrl, candidateMime, , candidateDigest] = candidate;
+          const [
+            candidateStamp,
+            candidateUrl,
+            candidateMime,
+            ,
+            candidateDigest,
+          ] = candidate;
           const replayVariants = replayUrlVariants(candidateUrl).slice(0, 4);
           for (const replayVariant of replayVariants) {
             try {
-              const cached = useAssetCache ? assetCacheLookup(replayVariant, candidateDigest) : null;
+              const cached = useAssetCache
+                ? assetCacheLookup(replayVariant, candidateDigest)
+                : null;
               if (cached) {
                 rawData = cached.data;
                 used = [...candidate];
@@ -1916,17 +2701,29 @@ async function runJob(job, options) {
                 job.cacheHits += 1;
                 break;
               }
-              const candidateResponse = await fetchRetry(`https://web.archive.org/web/${candidateStamp}id_/${replayVariant}`, retryOptions, 5);
+              const candidateResponse = await fetchRetry(
+                `https://web.archive.org/web/${candidateStamp}id_/${replayVariant}`,
+                retryOptions,
+                5,
+              );
               if (!candidateResponse.ok) throw httpFailure(candidateResponse);
               response = candidateResponse;
               used = [...candidate];
               used[1] = replayVariant;
               rawData = Buffer.from(await response.arrayBuffer());
-              if (useAssetCache) assetCacheStore(replayVariant, candidateDigest, rawData, candidateMime);
+              if (useAssetCache)
+                assetCacheStore(
+                  replayVariant,
+                  candidateDigest,
+                  rawData,
+                  candidateMime,
+                );
               break;
             } catch (candidateError) {
               archiveErrors.push(candidateError);
-              attemptErrors.push(`${candidateStamp} ${replayVariant}: ${candidateError.message}`);
+              attemptErrors.push(
+                `${candidateStamp} ${replayVariant}: ${candidateError.message}`,
+              );
             }
           }
           if (rawData) break;
@@ -1957,64 +2754,113 @@ async function runJob(job, options) {
           }
         }
         if (!rawData || !used) {
-          const failure = new Error(attemptErrors.join("; ") || "усі копії недоступні");
-          failure.recoveryStatus = classifyResourceFailure(original, archiveErrors);
+          const failure = new Error(
+            attemptErrors.join("; ") || "усі копії недоступні",
+          );
+          failure.recoveryStatus = classifyResourceFailure(
+            original,
+            archiveErrors,
+          );
           failure.diagnostics = failureDiagnostics(archiveErrors, [
-            "knowledge-base-exact", "direct-wayback", "cdx-inventory",
-            "nearest-snapshot", "other-timestamps", "http-https", "queryless",
-            "knowledge-base-fuzzy", "shared-library", "trusted-cdn",
+            "knowledge-base-exact",
+            "direct-wayback",
+            "cdx-inventory",
+            "nearest-snapshot",
+            "other-timestamps",
+            "http-https",
+            "queryless",
+            "knowledge-base-fuzzy",
+            "shared-library",
+            "trusted-cdn",
           ]);
           throw failure;
         }
         let data = rawData;
         const [usedStamp, usedOriginal, usedMime] = used;
         if (/html|css|javascript|json|xml|svg|text/i.test(mime)) {
-          const contentType = response?.headers.get("content-type") || usedMime || mime;
+          const contentType =
+            response?.headers.get("content-type") || usedMime || mime;
           const decoded = decodeText(data, contentType);
-          for (const dependency of extractDependencies(decoded, usedOriginal)) discoveredDependencies.add(dependency);
-          data = Buffer.from(rewriteText(decoded, local, usedOriginal, urlIndexes, usedMime || mime), "utf8");
+          for (const dependency of extractDependencies(decoded, usedOriginal))
+            discoveredDependencies.add(dependency);
+          data = Buffer.from(
+            rewriteText(
+              decoded,
+              local,
+              usedOriginal,
+              urlIndexes,
+              usedMime || mime,
+            ),
+            "utf8",
+          );
         }
         const destination = path.join(outputDir, ...local.split("/"));
         fs.mkdirSync(path.dirname(destination), { recursive: true });
         fs.writeFileSync(destination, data);
         manifest.push({
-          original, timestamp: usedStamp, requestedTimestamp: stamp, mime, local,
+          original,
+          timestamp: usedStamp,
+          requestedTimestamp: stamp,
+          mime,
+          local,
           bytes: data.length,
-          alternativesTried: Math.max(1, file.candidates.findIndex((candidate) => candidate[0] === usedStamp) + 1),
+          alternativesTried: Math.max(
+            1,
+            file.candidates.findIndex(
+              (candidate) => candidate[0] === usedStamp,
+            ) + 1,
+          ),
           source,
           family: classifyAsset(original),
           status: /^wayback/.test(source) ? "archived" : "downloaded",
         });
       } catch (error) {
-        const recoveryStatus = error.recoveryStatus || classifyResourceFailure(original, [error]);
-        const diagnostics = error.diagnostics || failureDiagnostics([error], []);
+        const recoveryStatus =
+          error.recoveryStatus || classifyResourceFailure(original, [error]);
+        const diagnostics =
+          error.diagnostics || failureDiagnostics([error], []);
         manifest.push({
-          original, timestamp: stamp, mime, local, bytes: Number(length) || 0,
-          status: recoveryStatus, error: error.message,
+          original,
+          timestamp: stamp,
+          mime,
+          local,
+          bytes: Number(length) || 0,
+          status: recoveryStatus,
+          error: error.message,
           failureReason: diagnostics.reason,
           strategiesTried: diagnostics.strategiesTried,
           strategyErrors: diagnostics.errors,
         });
         job.failed += 1;
-        const label = {
-          retry_later: "Internet Archive тимчасово недоступний — повторити пізніше",
-          not_archived: "Архів підтвердив відсутність копії",
-          reconstructable: "Стандартний ресурс CMS/фреймворку можна реконструювати",
-        }[recoveryStatus] || "Ресурс недоступний";
+        const label =
+          {
+            retry_later:
+              "Internet Archive тимчасово недоступний — повторити пізніше",
+            not_archived: "Архів підтвердив відсутність копії",
+            reconstructable:
+              "Стандартний ресурс CMS/фреймворку можна реконструювати",
+          }[recoveryStatus] || "Ресурс недоступний";
         log(job, `${label}: ${original} (${error.message})`);
       }
       job.completed += 1;
       if (job.completed % 10 === 0 || job.completed === job.total) {
-        log(job, `Завантажено ${job.completed} / ${job.total}; склад: ${job.cacheHits}; CDN: ${job.cdnHits}; помилки: ${job.failed}`);
+        log(
+          job,
+          `Завантажено ${job.completed} / ${job.total}; склад: ${job.cacheHits}; CDN: ${job.cdnHits}; помилки: ${job.failed}`,
+        );
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, files.length) }, worker),
+  );
   // Continue until the dynamically growing queue is empty. `limit` remains a
   // user-controlled safety ceiling; it is not a fixed number of crawl passes.
   const dependencyLimit = limit;
   const successfulResourceKeys = new Set(
-    manifest.filter(isSuccessfulResource).map((item) => cacheUrlKey(item.original))
+    manifest
+      .filter(isSuccessfulResource)
+      .map((item) => cacheUrlKey(item.original)),
   );
   const dependencyQueue = [...discoveredDependencies]
     .filter((url) => !successfulResourceKeys.has(cacheUrlKey(url)))
@@ -2022,8 +2868,14 @@ async function runJob(job, options) {
     .slice(0, dependencyLimit);
   const dependencySeen = new Set(dependencyQueue);
   if (dependencyQueue.length && !job.cancelled) {
-    log(job, `Другий прохід: знайдено ${dependencyQueue.length} додаткових залежностей`);
-    log(job, "Стратегія: локальний склад → прямий Wayback replay → CDX без query/http/www → версіонований CDN");
+    log(
+      job,
+      `Другий прохід: знайдено ${dependencyQueue.length} додаткових залежностей`,
+    );
+    log(
+      job,
+      "Стратегія: локальний склад → прямий Wayback replay → CDX без query/http/www → версіонований CDN",
+    );
     job.total += dependencyQueue.length;
     let dependencyCursor = 0;
     const archiveHealth = { consecutiveFailures: 0, openUntil: 0 };
@@ -2040,7 +2892,11 @@ async function runJob(job, options) {
         let cached = useAssetCache ? assetCacheLookup(original, null) : null;
         if (!cached && useAssetCache) {
           cached = assetCacheFuzzyLookup(original);
-          if (cached) log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] Бібліотека: сумісний ${cached.meta.family} (${Math.round(cached.score * 100)}%): ${original}`);
+          if (cached)
+            log(
+              job,
+              `[${dependencyIndex + 1}/${dependencyQueue.length}] Бібліотека: сумісний ${cached.meta.family} (${Math.round(cached.score * 100)}%): ${original}`,
+            );
         }
         const dependencyErrors = [];
         const strategiesTried = ["knowledge-base-exact"];
@@ -2053,91 +2909,171 @@ async function runJob(job, options) {
           },
           onExhausted: () => {
             archiveHealth.consecutiveFailures += 1;
-            if (archiveHealth.consecutiveFailures >= 3) archiveHealth.openUntil = Date.now() + 120000;
+            if (archiveHealth.consecutiveFailures >= 3)
+              archiveHealth.openUntil = Date.now() + 120000;
           },
           onRetry: ({ retry, maximumRetries, delay, error }) =>
-            log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] Мережева помилка; повтор ${retry}/${maximumRetries} через ${delay / 1000} с (${error.cause?.code || error.code || error.message})`),
+            log(
+              job,
+              `[${dependencyIndex + 1}/${dependencyQueue.length}] Мережева помилка; повтор ${retry}/${maximumRetries} через ${delay / 1000} с (${error.cause?.code || error.code || error.message})`,
+            ),
         };
         try {
           let rawData = cached?.data || null;
           let mime = cached?.meta?.mime || "";
           let usedStamp = "cache";
           let digest = "";
-          let source = cached ? (cached.matchType ? "knowledge-base-fuzzy" : "knowledge-base-exact") : "wayback";
+          let source = cached
+            ? cached.matchType
+              ? "knowledge-base-fuzzy"
+              : "knowledge-base-exact"
+            : "wayback";
           if (cached) {
             job.cacheHits += 1;
-            log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] Склад: ${original}`);
+            log(
+              job,
+              `[${dependencyIndex + 1}/${dependencyQueue.length}] Склад: ${original}`,
+            );
           }
           if (!rawData) {
             strategiesTried.push("direct-wayback", "http-https", "queryless");
             if (archiveHealth.openUntil > Date.now()) {
-              const circuitError = new Error("Internet Archive тимчасово недоступний; залежність відкладено без повторного очікування");
+              const circuitError = new Error(
+                "Internet Archive тимчасово недоступний; залежність відкладено без повторного очікування",
+              );
               circuitError.networkRelated = true;
               circuitError.recoveryStatus = "retry_later";
               throw circuitError;
             }
             try {
-              const direct = await fetchDirectReplay(original, timestamp, retryOptions);
+              const direct = await fetchDirectReplay(
+                original,
+                timestamp,
+                retryOptions,
+              );
               rawData = Buffer.from(await direct.response.arrayBuffer());
               mime = direct.response.headers.get("content-type") || "";
               usedStamp = timestamp;
               source = "wayback-direct";
-              if (useAssetCache) assetCacheStore(direct.variant, "", rawData, mime);
-              log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] Прямий replay: ${direct.variant}`);
+              if (useAssetCache)
+                assetCacheStore(direct.variant, "", rawData, mime);
+              log(
+                job,
+                `[${dependencyIndex + 1}/${dependencyQueue.length}] Прямий replay: ${direct.variant}`,
+              );
             } catch (directError) {
               dependencyErrors.push(directError);
-              log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] Прямий replay не спрацював; перевіряю CDX: ${original}`);
+              log(
+                job,
+                `[${dependencyIndex + 1}/${dependencyQueue.length}] Прямий replay не спрацював; перевіряю CDX: ${original}`,
+              );
             }
           }
           if (!rawData) {
-            strategiesTried.push("cdx-exact", "nearest-snapshot", "other-timestamps");
+            strategiesTried.push(
+              "cdx-exact",
+              "nearest-snapshot",
+              "other-timestamps",
+            );
             if (archiveHealth.openUntil > Date.now()) {
-              const circuitError = new Error("Internet Archive не відповідає; CDX-пошук відкладено");
+              const circuitError = new Error(
+                "Internet Archive не відповідає; CDX-пошук відкладено",
+              );
               circuitError.networkRelated = true;
               circuitError.recoveryStatus = "retry_later";
               throw circuitError;
             }
-            try { candidates = await exactCandidates(original, timestamp, windowYears || 5, alternatives, period, retryOptions); }
-            catch (candidateLookupError) { dependencyErrors.push(candidateLookupError); }
+            try {
+              candidates = await exactCandidates(
+                original,
+                timestamp,
+                windowYears || 5,
+                alternatives,
+                period,
+                retryOptions,
+              );
+            } catch (candidateLookupError) {
+              dependencyErrors.push(candidateLookupError);
+            }
           }
           for (const candidate of candidates) {
             if (rawData) break;
-            const [candidateStamp, candidateUrl, candidateMime, , candidateDigest] = candidate;
+            const [
+              candidateStamp,
+              candidateUrl,
+              candidateMime,
+              ,
+              candidateDigest,
+            ] = candidate;
             try {
-              const response = await fetchRetry(`https://web.archive.org/web/${candidateStamp}id_/${candidateUrl}`, retryOptions, 5);
+              const response = await fetchRetry(
+                `https://web.archive.org/web/${candidateStamp}id_/${candidateUrl}`,
+                retryOptions,
+                5,
+              );
               if (!response.ok) {
                 dependencyErrors.push(httpFailure(response));
                 continue;
               }
               rawData = Buffer.from(await response.arrayBuffer());
-              mime = candidateMime || response.headers.get("content-type") || "";
+              mime =
+                candidateMime || response.headers.get("content-type") || "";
               usedStamp = candidateStamp;
               digest = candidateDigest;
-              if (useAssetCache) assetCacheStore(candidateUrl, candidateDigest, rawData, mime);
-              log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] CDX ${candidateStamp}: ${candidateUrl}`);
-            } catch (candidateError) { dependencyErrors.push(candidateError); }
+              if (useAssetCache)
+                assetCacheStore(candidateUrl, candidateDigest, rawData, mime);
+              log(
+                job,
+                `[${dependencyIndex + 1}/${dependencyQueue.length}] CDX ${candidateStamp}: ${candidateUrl}`,
+              );
+            } catch (candidateError) {
+              dependencyErrors.push(candidateError);
+            }
           }
           if (!rawData) {
             strategiesTried.push(`cms-${siteProfile}`, "alternative-locations");
-            for (const alternativeUrl of cmsAlternativeUrls(original, siteProfile, hostname)) {
+            for (const alternativeUrl of cmsAlternativeUrls(
+              original,
+              siteProfile,
+              hostname,
+            )) {
               let alternativeCandidates = [];
               try {
-                alternativeCandidates = await exactCandidates(alternativeUrl, timestamp, 10, alternatives, period, retryOptions);
+                alternativeCandidates = await exactCandidates(
+                  alternativeUrl,
+                  timestamp,
+                  10,
+                  alternatives,
+                  period,
+                  retryOptions,
+                );
               } catch (alternativeError) {
                 dependencyErrors.push(alternativeError);
               }
               for (const candidate of alternativeCandidates) {
                 if (rawData) break;
-                const [candidateStamp, candidateUrl, candidateMime, , candidateDigest] = candidate;
+                const [
+                  candidateStamp,
+                  candidateUrl,
+                  candidateMime,
+                  ,
+                  candidateDigest,
+                ] = candidate;
                 try {
-                  const response = await fetchRetry(`https://web.archive.org/web/${candidateStamp}id_/${candidateUrl}`, retryOptions, 5);
+                  const response = await fetchRetry(
+                    `https://web.archive.org/web/${candidateStamp}id_/${candidateUrl}`,
+                    retryOptions,
+                    5,
+                  );
                   if (!response.ok) throw httpFailure(response);
                   rawData = Buffer.from(await response.arrayBuffer());
-                  mime = candidateMime || response.headers.get("content-type") || "";
+                  mime =
+                    candidateMime || response.headers.get("content-type") || "";
                   usedStamp = candidateStamp;
                   digest = candidateDigest;
                   source = `wayback-${siteProfile}-alternative`;
-                  if (useAssetCache) assetCacheStore(original, candidateDigest, rawData, mime);
+                  if (useAssetCache)
+                    assetCacheStore(original, candidateDigest, rawData, mime);
                   break;
                 } catch (alternativeFetchError) {
                   dependencyErrors.push(alternativeFetchError);
@@ -2148,25 +3084,56 @@ async function runJob(job, options) {
           }
           if (!rawData) {
             strategiesTried.push("filename-domain");
-            const localFilenameCandidates = filenameSnapshotCandidates(original, filenameIndex, timestamp, alternatives * 2);
-            const remoteFilenameCandidates = await searchFilenameAcrossDomain(
-              original, hostname, timestamp, alternatives * 2, retryOptions
+            const localFilenameCandidates = filenameSnapshotCandidates(
+              original,
+              filenameIndex,
+              timestamp,
+              alternatives * 2,
             );
-            const filenameCandidates = [...localFilenameCandidates, ...remoteFilenameCandidates]
-              .filter((row, index, all) => all.findIndex((item) =>
-                item[0] === row[0] && item[1] === row[1] && item[4] === row[4]) === index);
-            if (filenameCandidates.length) strategiesTried.push("filename-domain-hit");
+            const remoteFilenameCandidates = await searchFilenameAcrossDomain(
+              original,
+              hostname,
+              timestamp,
+              alternatives * 2,
+              retryOptions,
+            );
+            const filenameCandidates = [
+              ...localFilenameCandidates,
+              ...remoteFilenameCandidates,
+            ].filter(
+              (row, index, all) =>
+                all.findIndex(
+                  (item) =>
+                    item[0] === row[0] &&
+                    item[1] === row[1] &&
+                    item[4] === row[4],
+                ) === index,
+            );
+            if (filenameCandidates.length)
+              strategiesTried.push("filename-domain-hit");
             for (const candidate of filenameCandidates) {
-              const [candidateStamp, candidateUrl, candidateMime, , candidateDigest] = candidate;
+              const [
+                candidateStamp,
+                candidateUrl,
+                candidateMime,
+                ,
+                candidateDigest,
+              ] = candidate;
               try {
-                const response = await fetchRetry(`https://web.archive.org/web/${candidateStamp}id_/${candidateUrl}`, retryOptions, 5);
+                const response = await fetchRetry(
+                  `https://web.archive.org/web/${candidateStamp}id_/${candidateUrl}`,
+                  retryOptions,
+                  5,
+                );
                 if (!response.ok) throw httpFailure(response);
                 rawData = Buffer.from(await response.arrayBuffer());
-                mime = candidateMime || response.headers.get("content-type") || "";
+                mime =
+                  candidateMime || response.headers.get("content-type") || "";
                 usedStamp = candidateStamp;
                 digest = candidateDigest;
                 source = "wayback-filename-domain";
-                if (useAssetCache) assetCacheStore(original, candidateDigest, rawData, mime);
+                if (useAssetCache)
+                  assetCacheStore(original, candidateDigest, rawData, mime);
                 break;
               } catch (filenameError) {
                 dependencyErrors.push(filenameError);
@@ -2183,7 +3150,9 @@ async function runJob(job, options) {
               job.cacheHits += 1;
             }
           }
-          const cdnUrl = allowCdnFallback ? trustedVersionedCdn(original) : null;
+          const cdnUrl = allowCdnFallback
+            ? trustedVersionedCdn(original)
+            : null;
           if (!rawData && cdnUrl) {
             const response = await fetchRetry(cdnUrl, {}, 2, 20000);
             if (response.ok) {
@@ -2193,13 +3162,22 @@ async function runJob(job, options) {
               source = "trusted-cdn";
               job.cdnHits += 1;
               if (useAssetCache) assetCacheStore(original, "", rawData, mime);
-              log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] CDN: ${cdnUrl}`);
+              log(
+                job,
+                `[${dependencyIndex + 1}/${dependencyQueue.length}] CDN: ${cdnUrl}`,
+              );
             }
           }
           if (!rawData) {
             const failure = new Error("архівної копії залежності не знайдено");
-            failure.recoveryStatus = classifyResourceFailure(original, dependencyErrors);
-            failure.diagnostics = failureDiagnostics(dependencyErrors, strategiesTried);
+            failure.recoveryStatus = classifyResourceFailure(
+              original,
+              dependencyErrors,
+            );
+            failure.diagnostics = failureDiagnostics(
+              dependencyErrors,
+              strategiesTried,
+            );
             throw failure;
           }
           const local = outputPathFor(original, mime, hostname);
@@ -2210,7 +3188,12 @@ async function runJob(job, options) {
             const decoded = decodeText(rawData, mime);
             rawData = Buffer.from(decoded, "utf8");
             for (const nested of extractDependencies(decoded, original)) {
-              if (dependencyQueue.length >= dependencyLimit || dependencySeen.has(nested) || urlMap.has(nested)) continue;
+              if (
+                dependencyQueue.length >= dependencyLimit ||
+                dependencySeen.has(nested) ||
+                urlMap.has(nested)
+              )
+                continue;
               dependencySeen.add(nested);
               dependencyQueue.push(nested);
               job.total += 1;
@@ -2220,59 +3203,117 @@ async function runJob(job, options) {
           }
           fs.writeFileSync(destination, rawData);
           manifest.push({
-            original, timestamp: usedStamp, requestedTimestamp: timestamp, mime, local,
-            bytes: rawData.length, source, family: classifyAsset(original), digest,
+            original,
+            timestamp: usedStamp,
+            requestedTimestamp: timestamp,
+            mime,
+            local,
+            bytes: rawData.length,
+            source,
+            family: classifyAsset(original),
+            digest,
             status: /^wayback/.test(source) ? "archived" : "downloaded",
           });
         } catch (error) {
           job.failed += 1;
-          const recoveryStatus = error.recoveryStatus || classifyResourceFailure(original, dependencyErrors.concat(error));
-          const diagnostics = error.diagnostics || failureDiagnostics(dependencyErrors.concat(error), strategiesTried);
+          const recoveryStatus =
+            error.recoveryStatus ||
+            classifyResourceFailure(original, dependencyErrors.concat(error));
+          const diagnostics =
+            error.diagnostics ||
+            failureDiagnostics(dependencyErrors.concat(error), strategiesTried);
           manifest.push({
-            original, timestamp, mime: "", local: "", bytes: 0, status: recoveryStatus, error: error.message,
+            original,
+            timestamp,
+            mime: "",
+            local: "",
+            bytes: 0,
+            status: recoveryStatus,
+            error: error.message,
             failureReason: diagnostics.reason,
             strategiesTried: diagnostics.strategiesTried,
             strategyErrors: diagnostics.errors,
           });
-          log(job, `[${dependencyIndex + 1}/${dependencyQueue.length}] ${recoveryStatus}: ${original} — ${error.message}`);
+          log(
+            job,
+            `[${dependencyIndex + 1}/${dependencyQueue.length}] ${recoveryStatus}: ${original} — ${error.message}`,
+          );
         }
         job.completed += 1;
         if (job.completed % 10 === 0 || job.completed === job.total) {
-          log(job, `Дозавантаження: ${job.completed} / ${job.total}; помилки: ${job.failed}`);
+          log(
+            job,
+            `Дозавантаження: ${job.completed} / ${job.total}; помилки: ${job.failed}`,
+          );
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(2, dependencyQueue.length) }, dependencyWorker));
+    await Promise.all(
+      Array.from(
+        { length: Math.min(2, dependencyQueue.length) },
+        dependencyWorker,
+      ),
+    );
     log(job, "Повторно локалізую посилання після дозавантаження залежностей");
     const expandedIndexes = buildUrlIndexes(urlMap);
     for (const item of manifest) {
-      if (!isSuccessfulResource(item) || !item.local || !/html|css|javascript|json|xml|svg|text/i.test(item.mime)) continue;
+      if (
+        !isSuccessfulResource(item) ||
+        !item.local ||
+        !/html|css|javascript|json|xml|svg|text/i.test(item.mime)
+      )
+        continue;
       const filePath = path.join(outputDir, ...item.local.split("/"));
       if (!fs.existsSync(filePath)) continue;
       const content = fs.readFileSync(filePath, "utf8");
-      fs.writeFileSync(filePath, rewriteText(content, item.local, item.original, expandedIndexes, item.mime), "utf8");
+      fs.writeFileSync(
+        filePath,
+        rewriteText(
+          content,
+          item.local,
+          item.original,
+          expandedIndexes,
+          item.mime,
+        ),
+        "utf8",
+      );
     }
   }
   const consolidated = new Map();
   for (const item of manifest) {
     const key = cacheUrlKey(item.original);
     const previous = consolidated.get(key);
-    if (!previous || isSuccessfulResource(item) || !isSuccessfulResource(previous)) consolidated.set(key, item);
+    if (
+      !previous ||
+      isSuccessfulResource(item) ||
+      !isSuccessfulResource(previous)
+    )
+      consolidated.set(key, item);
   }
   const finalManifest = [...consolidated.values()];
   const widgetRepair = repairLegacyWidgets(outputDir, finalManifest);
   if (widgetRepair.repairedPages) {
     finalManifest.push(...widgetRepair.generated);
-    log(job, `773: відновлено legacy-слайдер на ${widgetRepair.repairedPages} сторінках; додано автономний JS/CSS fallback`);
+    log(
+      job,
+      `773: відновлено legacy-слайдер на ${widgetRepair.repairedPages} сторінках; додано автономний JS/CSS fallback`,
+    );
   }
   const textImageRepair = repairMissingTextImages(outputDir);
   if (textImageRepair.repairedImages) {
-    const repairedNames = new Set(textImageRepair.repairedReferences.map((reference) =>
-      path.posix.basename(reference.split(/[?#]/)[0]).toLowerCase()));
+    const repairedNames = new Set(
+      textImageRepair.repairedReferences.map((reference) =>
+        path.posix.basename(reference.split(/[?#]/)[0]).toLowerCase(),
+      ),
+    );
     for (const item of finalManifest) {
       if (isSuccessfulResource(item)) continue;
       let name = "";
-      try { name = path.posix.basename(new URL(item.original).pathname).toLowerCase(); } catch {}
+      try {
+        name = path.posix
+          .basename(new URL(item.original).pathname)
+          .toLowerCase();
+      } catch {}
       if (!repairedNames.has(name)) continue;
       item.status = "downloaded";
       item.source = "773-webplus-text-fallback";
@@ -2293,39 +3334,73 @@ async function runJob(job, options) {
       family: "773 WebPlus deterministic fallback",
       status: "downloaded",
     });
-    log(job, `773: автоматично реконструйовано ${textImageRepair.repairedImages} WebPlus text-image елементів на ${textImageRepair.repairedPages} сторінках`);
+    log(
+      job,
+      `773: автоматично реконструйовано ${textImageRepair.repairedImages} WebPlus text-image елементів на ${textImageRepair.repairedPages} сторінках`,
+    );
   }
-  job.failed = finalManifest.filter((item) => !isSuccessfulResource(item)).length;
-  job.criticalFailed = finalManifest.filter((item) =>
-    !isSuccessfulResource(item) && item.status !== "reconstructable"
-      && /css|javascript|ecmascript/i.test(`${item.mime || ""} ${item.original || ""}`)
+  job.failed = finalManifest.filter(
+    (item) => !isSuccessfulResource(item),
   ).length;
-  const recoveredCount = manifest.filter((item) => !isSuccessfulResource(item)).length
-    - finalManifest.filter((item) => !isSuccessfulResource(item)).length;
-  if (recoveredCount > 0) log(job, `Повторний прохід відновив ${recoveredCount} раніше недоступних ресурсів`);
+  job.criticalFailed = finalManifest.filter(
+    (item) =>
+      !isSuccessfulResource(item) &&
+      item.status !== "reconstructable" &&
+      /css|javascript|ecmascript/i.test(
+        `${item.mime || ""} ${item.original || ""}`,
+      ),
+  ).length;
+  const recoveredCount =
+    manifest.filter((item) => !isSuccessfulResource(item)).length -
+    finalManifest.filter((item) => !isSuccessfulResource(item)).length;
+  if (recoveredCount > 0)
+    log(
+      job,
+      `Повторний прохід відновив ${recoveredCount} раніше недоступних ресурсів`,
+    );
   log(job, "Перевіряю локальні посилання, CSS, шрифти та зображення");
   job.phase = "audit";
   const audit = auditOutput(outputDir, finalManifest);
   job.brokenReferences = audit.brokenCount;
-  if (audit.brokenCount) log(job, `Аудит: ${audit.brokenCount} локальних залежностей відсутні в архіві`);
-  if (audit.external.length) log(job, `Аудит: ${audit.external.length} зовнішніх ресурсів залишено як зовнішні URL`);
+  if (audit.brokenCount)
+    log(
+      job,
+      `Аудит: ${audit.brokenCount} локальних залежностей відсутні в архіві`,
+    );
+  if (audit.external.length)
+    log(
+      job,
+      `Аудит: ${audit.external.length} зовнішніх ресурсів залишено як зовнішні URL`,
+    );
   const groups = {
     downloaded: finalManifest.filter((item) => item.status === "downloaded"),
-    archived: finalManifest.filter((item) => item.status === "archived" || item.status === "ok"),
+    archived: finalManifest.filter(
+      (item) => item.status === "archived" || item.status === "ok",
+    ),
     retry_later: finalManifest.filter((item) => item.status === "retry_later"),
-    not_archived: finalManifest.filter((item) => item.status === "not_archived"),
-    reconstructable: finalManifest.filter((item) => item.status === "reconstructable"),
+    not_archived: finalManifest.filter(
+      (item) => item.status === "not_archived",
+    ),
+    reconstructable: finalManifest.filter(
+      (item) => item.status === "reconstructable",
+    ),
   };
   const successfulFiles = finalManifest.filter(isSuccessfulResource);
-  const failedFiles = finalManifest.filter((item) => !isSuccessfulResource(item));
+  const failedFiles = finalManifest.filter(
+    (item) => !isSuccessfulResource(item),
+  );
   const missingByType = { css: [], js: [], images: [], fonts: [], other: [] };
   for (const item of failedFiles) {
     const value = `${item.mime || ""} ${item.original || ""}`.toLowerCase();
-    const type = /css|\.css(?:[?#]|$)/.test(value) ? "css"
-      : /javascript|ecmascript|\.m?js(?:[?#]|$)/.test(value) ? "js"
-      : /font|woff2?|ttf|otf|eot/.test(value) ? "fonts"
-      : /image|svg|webp|avif|png|jpe?g|gif|ico/.test(value) ? "images"
-      : "other";
+    const type = /css|\.css(?:[?#]|$)/.test(value)
+      ? "css"
+      : /javascript|ecmascript|\.m?js(?:[?#]|$)/.test(value)
+        ? "js"
+        : /font|woff2?|ttf|otf|eot/.test(value)
+          ? "fonts"
+          : /image|svg|webp|avif|png|jpe?g|gif|ico/.test(value)
+            ? "images"
+            : "other";
     missingByType[type].push(item);
   }
   const recoverySources = successfulFiles.reduce((counts, item) => {
@@ -2334,7 +3409,7 @@ async function runJob(job, options) {
     return counts;
   }, {});
   const report = {
-    generator: "773™ Site Restorer for Archivarix 1.0",
+    generator: "Site Restorer for Archivarix 1.0",
     source: "Internet Archive CDX API",
     domain: hostname,
     siteProfile,
@@ -2345,13 +3420,20 @@ async function runJob(job, options) {
     recoveredFromArchive: groups.archived.length,
     failed: job.failed,
     recoveryPercentage: finalManifest.length
-      ? Number(((successfulFiles.length / finalManifest.length) * 100).toFixed(2))
+      ? Number(
+          ((successfulFiles.length / finalManifest.length) * 100).toFixed(2),
+        )
       : 100,
     recoveredFiles: successfulFiles,
     failedFiles,
     recoverySources,
     missingByType,
-    missingCounts: Object.fromEntries(Object.entries(missingByType).map(([type, items]) => [type, items.length])),
+    missingCounts: Object.fromEntries(
+      Object.entries(missingByType).map(([type, items]) => [
+        type,
+        items.length,
+      ]),
+    ),
     dependencyDiscovery: {
       discovered: dependencySeen.size,
       processed: dependencyQueue.length,
@@ -2366,89 +3448,153 @@ async function runJob(job, options) {
     recoveredOnRetry: Math.max(0, recoveredCount),
     attempts: manifest.length,
     groups,
-    statusCounts: Object.fromEntries(Object.entries(groups).map(([name, items]) => [name, items.length])),
+    statusCounts: Object.fromEntries(
+      Object.entries(groups).map(([name, items]) => [name, items.length]),
+    ),
     files: finalManifest,
   };
   const reportsDir = path.join(projectDir, "reports");
   const packagesDir = path.join(projectDir, "packages");
   fs.mkdirSync(reportsDir, { recursive: true });
   fs.mkdirSync(packagesDir, { recursive: true });
-  fs.writeFileSync(path.join(reportsDir, "restore-manifest.json"), JSON.stringify(report, null, 2), "utf8");
-  fs.writeFileSync(path.join(reportsDir, "restore.log"), job.logs.join("\r\n") + "\r\n", "utf8");
-  fs.writeFileSync(path.join(reportsDir, "errors.json"), JSON.stringify({
-    retry_later: groups.retry_later,
-    not_archived: groups.not_archived,
-    reconstructable: groups.reconstructable,
-    broken: audit.broken,
-    external: audit.external,
-  }, null, 2), "utf8");
-  fs.writeFileSync(path.join(reportsDir, "recovery-report.txt"), [
-    `773™ — звіт відновлення ${hostname}`,
-    `Дата архіву: ${timestamp}`,
-    `Завершено: ${report.completedAt}`,
-    "",
-    `Завантажено з локального складу/CDN: ${groups.downloaded.length}`,
-    ...groups.downloaded.map((item) => `  + ${item.original}`),
-    "",
-    `Відновлено з Internet Archive: ${groups.archived.length}`,
-    ...groups.archived.map((item) => `  + ${item.original}`),
-    "",
-    `Повторити пізніше: ${groups.retry_later.length}`,
-    ...groups.retry_later.map((item) => `  ~ ${item.original} — ${item.error || ""}`),
-    "",
-    `Не збережено в архіві: ${groups.not_archived.length}`,
-    ...groups.not_archived.map((item) => `  - ${item.original}`),
-    "",
-    `Можна реконструювати з відповідної CMS/фреймворку: ${groups.reconstructable.length}`,
-    ...groups.reconstructable.map((item) => `  * ${item.original}`),
-  ].join("\r\n"), "utf8");
-  fs.writeFileSync(path.join(projectDir, "README.txt"), [
-    "Відновлена статична копія сайту.",
-    "site — готові файли сайту.",
-    "reports — звіт відновлення та перелік помилок.",
-    "packages — ZIP для перенесення або імпорту.",
-    "Для Archivarix CMS: увімкніть Expert mode → Import sites → Static website import.",
-    `Джерело: Wayback Machine, домен ${hostname}, дата ${timestamp}.`,
-  ].join("\r\n"), "utf8");
+  fs.writeFileSync(
+    path.join(reportsDir, "restore-manifest.json"),
+    JSON.stringify(report, null, 2),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(reportsDir, "restore.log"),
+    job.logs.join("\r\n") + "\r\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(reportsDir, "errors.json"),
+    JSON.stringify(
+      {
+        retry_later: groups.retry_later,
+        not_archived: groups.not_archived,
+        reconstructable: groups.reconstructable,
+        broken: audit.broken,
+        external: audit.external,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(reportsDir, "recovery-report.txt"),
+    [
+      `773™ — звіт відновлення ${hostname}`,
+      `Дата архіву: ${timestamp}`,
+      `Завершено: ${report.completedAt}`,
+      "",
+      `Завантажено з локального складу/CDN: ${groups.downloaded.length}`,
+      ...groups.downloaded.map((item) => `  + ${item.original}`),
+      "",
+      `Відновлено з Internet Archive: ${groups.archived.length}`,
+      ...groups.archived.map((item) => `  + ${item.original}`),
+      "",
+      `Повторити пізніше: ${groups.retry_later.length}`,
+      ...groups.retry_later.map(
+        (item) => `  ~ ${item.original} — ${item.error || ""}`,
+      ),
+      "",
+      `Не збережено в архіві: ${groups.not_archived.length}`,
+      ...groups.not_archived.map((item) => `  - ${item.original}`),
+      "",
+      `Можна реконструювати з відповідної CMS/фреймворку: ${groups.reconstructable.length}`,
+      ...groups.reconstructable.map((item) => `  * ${item.original}`),
+    ].join("\r\n"),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(projectDir, "README.txt"),
+    [
+      "Відновлена статична копія сайту.",
+      "site — готові файли сайту.",
+      "reports — звіт відновлення та перелік помилок.",
+      "packages — ZIP для перенесення або імпорту.",
+      "Для Archivarix CMS: увімкніть Expert mode → Import sites → Static website import.",
+      `Джерело: Wayback Machine, домен ${hostname}, дата ${timestamp}.`,
+    ].join("\r\n"),
+    "utf8",
+  );
   if (!job.cancelled && options.createZip !== false) {
     log(job, "Створюю звичайний ZIP статичного сайту");
-    createZip(outputDir, path.join(packagesDir, `${safeName(hostname)}-${timestamp}-site.zip`));
+    createZip(
+      outputDir,
+      path.join(packagesDir, `${safeName(hostname)}-${timestamp}-site.zip`),
+    );
     try {
       log(job, "Створюю нативний ZIP Archivarix зі structure.db");
-      const nativeZip = path.join(packagesDir, `${safeName(hostname)}-archivarix-native-v4.zip`);
+      const nativeZip = path.join(
+        packagesDir,
+        `${safeName(hostname)}-archivarix-native-v4.zip`,
+      );
       const nativeResult = createNativeArchivarixPackage(
         outputDir,
         path.join(reportsDir, "restore-manifest.json"),
         nativeZip,
-        hostname
+        hostname,
       );
       job.archivarixPackage = nativeZip;
-      log(job, `Нативний пакет Archivarix готовий: ${nativeResult.files || report.downloaded} файлів`);
-      log(job, `Перевірка пакета: головна сторінка ${nativeResult.validation.homepages.length}, CSS ${nativeResult.validation.css.length}, відсутніх payload 0, помилок розміру 0`);
+      log(
+        job,
+        `Нативний пакет Archivarix готовий: ${nativeResult.files || report.downloaded} файлів`,
+      );
+      log(
+        job,
+        `Перевірка пакета: головна сторінка ${nativeResult.validation.homepages.length}, CSS ${nativeResult.validation.css.length}, відсутніх payload 0, помилок розміру 0`,
+      );
     } catch (error) {
-      log(job, `Не вдалося автоматично створити нативний пакет Archivarix: ${error.message}`);
+      log(
+        job,
+        `Не вдалося автоматично створити нативний пакет Archivarix: ${error.message}`,
+      );
     }
   }
-  if (!job.cancelled && appSettings.syncAfterRestore && appSettings.librarySyncFolder) {
+  if (
+    !job.cancelled &&
+    appSettings.syncAfterRestore &&
+    appSettings.librarySyncFolder
+  ) {
     try {
       const sync = syncLibrary(appSettings.syncDirection || "both");
-      log(job, `Синхронізація бібліотеки: передано ${sync.uploaded}, отримано ${sync.downloaded} файлів`);
+      log(
+        job,
+        `Синхронізація бібліотеки: передано ${sync.uploaded}, отримано ${sync.downloaded} файлів`,
+      );
     } catch (error) {
       log(job, `Синхронізація бібліотеки не виконана: ${error.message}`);
     }
   }
   job.status = job.cancelled ? "cancelled" : "done";
   job.phase = job.status;
-  log(job, job.cancelled ? "Зупинено користувачем" : `Готово. Унікальних файлів: ${report.total}, відновлено: ${report.downloaded}, помилок: ${report.failed}`);
-  fs.writeFileSync(path.join(reportsDir, "restore.log"), job.logs.join("\r\n") + "\r\n", "utf8");
+  log(
+    job,
+    job.cancelled
+      ? "Зупинено користувачем"
+      : `Готово. Унікальних файлів: ${report.total}, відновлено: ${report.downloaded}, помилок: ${report.failed}`,
+  );
+  fs.writeFileSync(
+    path.join(reportsDir, "restore.log"),
+    job.logs.join("\r\n") + "\r\n",
+    "utf8",
+  );
 }
 
 function openFolder(folder) {
   return new Promise((resolve, reject) => {
-    const target = /^https?:\/\//i.test(String(folder)) ? String(folder) : path.resolve(folder);
-    const command = process.platform === "win32"
-      ? path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe")
-      : process.platform === "darwin" ? "open" : "xdg-open";
+    const target = /^https?:\/\//i.test(String(folder))
+      ? String(folder)
+      : path.resolve(folder);
+    const command =
+      process.platform === "win32"
+        ? path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe")
+        : process.platform === "darwin"
+          ? "open"
+          : "xdg-open";
     const child = spawn(command, [target], {
       detached: false,
       stdio: "ignore",
@@ -2468,36 +3614,67 @@ function findPhpExecutable() {
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;
-    const check = spawnSync(candidate, ["-r", "exit(extension_loaded('pdo_sqlite') && extension_loaded('zip') ? 0 : 1);"], {
-      stdio: "ignore",
-      windowsHide: true,
-      timeout: 10000,
-    });
+    const check = spawnSync(
+      candidate,
+      [
+        "-r",
+        "exit(extension_loaded('pdo_sqlite') && extension_loaded('zip') ? 0 : 1);",
+      ],
+      {
+        stdio: "ignore",
+        windowsHide: true,
+        timeout: 10000,
+      },
+    );
     if (!check.error && check.status === 0) return candidate;
   }
   return null;
 }
 
-function createNativeArchivarixPackage(siteRoot, manifestPath, destination, domain) {
+function createNativeArchivarixPackage(
+  siteRoot,
+  manifestPath,
+  destination,
+  domain,
+) {
   const php = findPhpExecutable();
   if (!php) {
-    throw new Error("Для нативного пакета Archivarix потрібен PHP з розширеннями pdo_sqlite і zip. Вкажіть шлях у ARCHIVARIX_PHP.");
+    throw new Error(
+      "Для нативного пакета Archivarix потрібен PHP з розширеннями pdo_sqlite і zip. Вкажіть шлях у ARCHIVARIX_PHP.",
+    );
   }
   const script = path.join(ROOT, "tools", "build-archivarix-native.php");
-  const result = spawnSync(php, [script, siteRoot, manifestPath, destination, domain], {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 10 * 60 * 1000,
-    maxBuffer: 10 * 1024 * 1024,
-  });
+  const result = spawnSync(
+    php,
+    [script, siteRoot, manifestPath, destination, domain],
+    {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 10 * 60 * 1000,
+      maxBuffer: 10 * 1024 * 1024,
+    },
+  );
   if (result.error) throw result.error;
   if (result.status !== 0 || !fs.existsSync(destination)) {
-    throw new Error((result.stderr || result.stdout || "Не вдалося створити нативний пакет Archivarix.").trim());
+    throw new Error(
+      (
+        result.stderr ||
+        result.stdout ||
+        "Не вдалося створити нативний пакет Archivarix."
+      ).trim(),
+    );
   }
   let generated;
-  try { generated = JSON.parse(result.stdout); }
-  catch { generated = { ok: true, output: destination }; }
-  const validationScript = path.join(ROOT, "tools", "validate-archivarix-native.php");
+  try {
+    generated = JSON.parse(result.stdout);
+  } catch {
+    generated = { ok: true, output: destination };
+  }
+  const validationScript = path.join(
+    ROOT,
+    "tools",
+    "validate-archivarix-native.php",
+  );
   const validation = spawnSync(php, [validationScript, destination], {
     encoding: "utf8",
     windowsHide: true,
@@ -2507,30 +3684,50 @@ function createNativeArchivarixPackage(siteRoot, manifestPath, destination, doma
   if (validation.error) throw validation.error;
   if (validation.status !== 0) {
     fs.rmSync(destination, { force: true });
-    throw new Error((validation.stderr || validation.stdout || "Пакет не пройшов перевірку Archivarix.").trim());
+    throw new Error(
+      (
+        validation.stderr ||
+        validation.stdout ||
+        "Пакет не пройшов перевірку Archivarix."
+      ).trim(),
+    );
   }
   let checked;
-  try { checked = JSON.parse(validation.stdout); }
-  catch {
+  try {
+    checked = JSON.parse(validation.stdout);
+  } catch {
     fs.rmSync(destination, { force: true });
     throw new Error("Валідатор Archivarix повернув некоректний результат.");
   }
-  if (!checked.valid || !checked.homepages?.length || checked.missingPayloads !== 0 || checked.mismatchedPayloads !== 0) {
+  if (
+    !checked.valid ||
+    !checked.homepages?.length ||
+    checked.missingPayloads !== 0 ||
+    checked.mismatchedPayloads !== 0
+  ) {
     fs.rmSync(destination, { force: true });
     throw new Error(
-      `Пакет Archivarix неповний: головних сторінок ${checked.homepages?.length || 0}, `
-      + `відсутніх файлів ${checked.missingPayloads || 0}, невірних розмірів ${checked.mismatchedPayloads || 0}.`
+      `Пакет Archivarix неповний: головних сторінок ${checked.homepages?.length || 0}, ` +
+        `відсутніх файлів ${checked.missingPayloads || 0}, невірних розмірів ${checked.mismatchedPayloads || 0}.`,
     );
   }
   return { ...generated, validation: checked };
 }
 
 function serveStatic(req, res) {
-  const pathname = decodeURIComponent(new URL(req.url, `http://${HOST}`).pathname);
+  const pathname = decodeURIComponent(
+    new URL(req.url, `http://${HOST}`).pathname,
+  );
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
   const file = path.resolve(PUBLIC_ROOT, relative);
-  if (!file.startsWith(path.resolve(PUBLIC_ROOT)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-    res.writeHead(404); res.end("Not found"); return;
+  if (
+    !file.startsWith(path.resolve(PUBLIC_ROOT)) ||
+    !fs.existsSync(file) ||
+    fs.statSync(file).isDirectory()
+  ) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
   }
   const types = {
     ".html": "text/html; charset=utf-8",
@@ -2538,14 +3735,21 @@ function serveStatic(req, res) {
     ".js": "text/javascript; charset=utf-8",
     ".svg": "image/svg+xml",
   };
-  res.writeHead(200, { "Content-Type": types[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-store" });
+  res.writeHead(200, {
+    "Content-Type": types[path.extname(file)] || "application/octet-stream",
+    "Cache-Control": "no-store",
+  });
   fs.createReadStream(file).pipe(res);
 }
 
 const server = http.createServer((req, res) => {
   const parsed = new URL(req.url, `http://${HOST}:${PORT}`);
   if (req.method === "GET" && parsed.pathname === "/api/snapshots") {
-    findSnapshots(parsed.searchParams.get("domain"), parsed.searchParams.get("forceRemote") !== "1").then((items) => sendJson(res, 200, { items }))
+    findSnapshots(
+      parsed.searchParams.get("domain"),
+      parsed.searchParams.get("forceRemote") !== "1",
+    )
+      .then((items) => sendJson(res, 200, { items }))
       .catch((error) => sendJson(res, 400, { error: error.message }));
     return;
   }
@@ -2553,11 +3757,15 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, assetCacheStats());
   }
   if (req.method === "GET" && parsed.pathname === "/api/settings") {
-    return sendJson(res, 200, { ...appSettings, resolvedOutputRoot: OUTPUT_ROOT });
+    return sendJson(res, 200, {
+      ...appSettings,
+      resolvedOutputRoot: OUTPUT_ROOT,
+    });
   }
   if (req.method === "GET" && parsed.pathname === "/api/manual") {
     const manual = path.join(ROOT, "USER-MANUAL.md");
-    if (!fs.existsSync(manual)) return sendJson(res, 404, { error: "Посібник не знайдено." });
+    if (!fs.existsSync(manual))
+      return sendJson(res, 404, { error: "Посібник не знайдено." });
     res.writeHead(200, {
       "Content-Type": "text/markdown; charset=utf-8",
       "Content-Disposition": 'inline; filename="773-user-manual-uk.md"',
@@ -2568,33 +3776,50 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && parsed.pathname === "/api/settings") {
     let body = "";
-    req.on("data", (chunk) => { body += chunk; });
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", () => {
-      try { sendJson(res, 200, saveSettings(JSON.parse(body))); }
-      catch (error) { sendJson(res, 400, { error: error.message }); }
+      try {
+        sendJson(res, 200, saveSettings(JSON.parse(body)));
+      } catch (error) {
+        sendJson(res, 400, { error: error.message });
+      }
     });
     return;
   }
   if (req.method === "GET" && parsed.pathname === "/api/projects") {
-    try { return sendJson(res, 200, { outputRoot: OUTPUT_ROOT, items: listProjects() }); }
-    catch (error) { return sendJson(res, 500, { error: error.message }); }
+    try {
+      return sendJson(res, 200, {
+        outputRoot: OUTPUT_ROOT,
+        items: listProjects(),
+      });
+    } catch (error) {
+      return sendJson(res, 500, { error: error.message });
+    }
   }
   if (req.method === "POST" && parsed.pathname === "/api/projects/import") {
-    readRequestBuffer(req).then((buffer) => {
-      const requested = safeName(parsed.searchParams.get("name") || "imported-project");
-      const id = `_imports/${requested}-imported-${Date.now()}`;
-      const target = projectPath(id);
-      try {
-        extractStoredZip(buffer, target);
-        sendJson(res, 200, { ok: true, id });
-      } catch (error) {
-        fs.rmSync(target, { recursive: true, force: true });
-        sendJson(res, 400, { error: error.message });
-      }
-    }).catch((error) => sendJson(res, 400, { error: error.message }));
+    readRequestBuffer(req)
+      .then((buffer) => {
+        const requested = safeName(
+          parsed.searchParams.get("name") || "imported-project",
+        );
+        const id = `_imports/${requested}-imported-${Date.now()}`;
+        const target = projectPath(id);
+        try {
+          extractStoredZip(buffer, target);
+          sendJson(res, 200, { ok: true, id });
+        } catch (error) {
+          fs.rmSync(target, { recursive: true, force: true });
+          sendJson(res, 400, { error: error.message });
+        }
+      })
+      .catch((error) => sendJson(res, 400, { error: error.message }));
     return;
   }
-  const archivarixExportMatch = parsed.pathname.match(/^\/api\/projects\/([^/]+)\/archivarix$/);
+  const archivarixExportMatch = parsed.pathname.match(
+    /^\/api\/projects\/([^/]+)\/archivarix$/,
+  );
   if (archivarixExportMatch && req.method === "GET") {
     try {
       const id = decodeURIComponent(archivarixExportMatch[1]);
@@ -2603,12 +3828,21 @@ const server = http.createServer((req, res) => {
       const modernSite = path.join(target, "site");
       const siteRoot = fs.existsSync(modernSite) ? modernSite : target;
       const reportPath = reportPathFor(target);
-      if (!fs.existsSync(reportPath)) throw new Error("Немає завершеного звіту відновлення.");
+      if (!fs.existsSync(reportPath))
+        throw new Error("Немає завершеного звіту відновлення.");
       let domain = id.split("/")[0];
-      try { domain = JSON.parse(fs.readFileSync(reportPath, "utf8")).domain || domain; } catch {}
-      const packages = fs.existsSync(modernSite) ? path.join(target, "packages") : target;
+      try {
+        domain =
+          JSON.parse(fs.readFileSync(reportPath, "utf8")).domain || domain;
+      } catch {}
+      const packages = fs.existsSync(modernSite)
+        ? path.join(target, "packages")
+        : target;
       fs.mkdirSync(packages, { recursive: true });
-      const zip = path.join(packages, `${safeName(domain)}-archivarix-native-v4.zip`);
+      const zip = path.join(
+        packages,
+        `${safeName(domain)}-archivarix-native-v4.zip`,
+      );
       createNativeArchivarixPackage(siteRoot, reportPath, zip, domain);
       res.writeHead(200, {
         "Content-Type": "application/zip",
@@ -2616,10 +3850,14 @@ const server = http.createServer((req, res) => {
         "Content-Length": fs.statSync(zip).size,
       });
       fs.createReadStream(zip).pipe(res);
-    } catch (error) { sendJson(res, 404, { error: error.message }); }
+    } catch (error) {
+      sendJson(res, 404, { error: error.message });
+    }
     return;
   }
-  const projectExportMatch = parsed.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
+  const projectExportMatch = parsed.pathname.match(
+    /^\/api\/projects\/([^/]+)\/export$/,
+  );
   if (projectExportMatch && req.method === "GET") {
     try {
       const id = decodeURIComponent(projectExportMatch[1]);
@@ -2635,10 +3873,14 @@ const server = http.createServer((req, res) => {
         "Content-Length": fs.statSync(zip).size,
       });
       fs.createReadStream(zip).pipe(res);
-    } catch (error) { sendJson(res, 404, { error: error.message }); }
+    } catch (error) {
+      sendJson(res, 404, { error: error.message });
+    }
     return;
   }
-  const projectRepairMatch = parsed.pathname.match(/^\/api\/projects\/([^/]+)\/repair$/);
+  const projectRepairMatch = parsed.pathname.match(
+    /^\/api\/projects\/([^/]+)\/repair$/,
+  );
   if (projectRepairMatch && req.method === "POST") {
     try {
       const id = decodeURIComponent(projectRepairMatch[1]);
@@ -2654,19 +3896,35 @@ const server = http.createServer((req, res) => {
     try {
       const target = projectPath(decodeURIComponent(projectMatch[1]));
       const reportPath = reportPathFor(target);
-      if (!fs.existsSync(reportPath)) throw new Error("Звіт цього проєкту ще не створено.");
-      return sendJson(res, 200, JSON.parse(fs.readFileSync(reportPath, "utf8")));
-    } catch (error) { return sendJson(res, 404, { error: error.message }); }
+      if (!fs.existsSync(reportPath))
+        throw new Error("Звіт цього проєкту ще не створено.");
+      return sendJson(
+        res,
+        200,
+        JSON.parse(fs.readFileSync(reportPath, "utf8")),
+      );
+    } catch (error) {
+      return sendJson(res, 404, { error: error.message });
+    }
   }
   if (projectMatch && req.method === "DELETE") {
     try {
       const projectId = decodeURIComponent(projectMatch[1]);
-      const active = [...jobs.values()].some((job) => job.outputFolder === projectId && !["done", "cancelled", "error"].includes(job.status));
-      if (active) throw new Error("Неможливо видалити проєкт, поки триває відновлення.");
+      const active = [...jobs.values()].some(
+        (job) =>
+          job.outputFolder === projectId &&
+          !["done", "cancelled", "error"].includes(job.status),
+      );
+      if (active)
+        throw new Error("Неможливо видалити проєкт, поки триває відновлення.");
       const target = projectPath(projectId);
       if (!fs.existsSync(target)) {
         jobs.forEach((job, id) => {
-          if (job.outputFolder === projectId && ["done", "cancelled", "error"].includes(job.status)) jobs.delete(id);
+          if (
+            job.outputFolder === projectId &&
+            ["done", "cancelled", "error"].includes(job.status)
+          )
+            jobs.delete(id);
         });
         return sendJson(res, 200, {
           ok: true,
@@ -2677,29 +3935,60 @@ const server = http.createServer((req, res) => {
         });
       }
       const bytesRemoved = folderSize(target);
-      fs.rmSync(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
+      fs.rmSync(target, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 250,
+      });
       if (fs.existsSync(target)) {
-        throw new Error(`Папку не вдалося фізично видалити: ${target}. Закрийте відкриті файли або Провідник і повторіть.`);
+        throw new Error(
+          `Папку не вдалося фізично видалити: ${target}. Закрийте відкриті файли або Провідник і повторіть.`,
+        );
       }
       const parent = path.dirname(target);
-      if (storageRoots().some((root) => parent.startsWith(`${root}${path.sep}`))
-        && fs.existsSync(parent) && fs.readdirSync(parent).length === 0) {
+      if (
+        storageRoots().some((root) =>
+          parent.startsWith(`${root}${path.sep}`),
+        ) &&
+        fs.existsSync(parent) &&
+        fs.readdirSync(parent).length === 0
+      ) {
         fs.rmSync(parent, { force: true });
       }
       jobs.forEach((job, id) => {
-        if (job.outputFolder === projectId && ["done", "cancelled", "error"].includes(job.status)) jobs.delete(id);
+        if (
+          job.outputFolder === projectId &&
+          ["done", "cancelled", "error"].includes(job.status)
+        )
+          jobs.delete(id);
       });
-      return sendJson(res, 200, { ok: true, physicallyDeleted: true, path: target, bytesRemoved });
-    } catch (error) { return sendJson(res, 400, { error: error.message }); }
+      return sendJson(res, 200, {
+        ok: true,
+        physicallyDeleted: true,
+        path: target,
+        bytesRemoved,
+      });
+    } catch (error) {
+      return sendJson(res, 400, { error: error.message });
+    }
   }
   if (req.method === "GET" && parsed.pathname === "/api/library") {
-    return sendJson(res, 200, { stats: assetCacheStats(), items: assetCacheItems(), sync: librarySyncState });
+    return sendJson(res, 200, {
+      stats: assetCacheStats(),
+      items: assetCacheItems(),
+      sync: librarySyncState,
+    });
   }
   if (req.method === "GET" && parsed.pathname === "/api/library/sync") {
     return sendJson(res, 200, {
       ...librarySyncState,
       configured: Boolean(appSettings.librarySyncFolder),
-      autoSync: Boolean(appSettings.syncOnStart || appSettings.syncAfterRestore || appSettings.syncIntervalMinutes),
+      autoSync: Boolean(
+        appSettings.syncOnStart ||
+        appSettings.syncAfterRestore ||
+        appSettings.syncIntervalMinutes,
+      ),
       folder: appSettings.librarySyncFolder || "",
       deviceId: appSettings.deviceId,
       deviceName: appSettings.syncDeviceName || os.hostname(),
@@ -2707,16 +3996,25 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && parsed.pathname === "/api/library/sync/test") {
     let body = "";
-    req.on("data", (chunk) => { body += chunk; });
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", () => {
       try {
-        const folder = body ? JSON.parse(body).folder : appSettings.librarySyncFolder;
+        const folder = body
+          ? JSON.parse(body).folder
+          : appSettings.librarySyncFolder;
         sendJson(res, 200, testLibrarySyncFolder(folder));
-      } catch (error) { sendJson(res, 400, { error: error.message }); }
+      } catch (error) {
+        sendJson(res, 400, { error: error.message });
+      }
     });
     return;
   }
-  if (req.method === "POST" && parsed.pathname === "/api/library/select-folder") {
+  if (
+    req.method === "POST" &&
+    parsed.pathname === "/api/library/select-folder"
+  ) {
     try {
       const folder = selectSyncFolder();
       return sendJson(res, 200, { ok: true, cancelled: !folder, folder });
@@ -2724,16 +4022,26 @@ const server = http.createServer((req, res) => {
       return sendJson(res, 400, { error: error.message });
     }
   }
-  if (req.method === "POST" && parsed.pathname === "/api/library/open-sync-folder") {
-    if (!appSettings.librarySyncFolder) return sendJson(res, 400, { error: "Папку синхронізації не налаштовано." });
+  if (
+    req.method === "POST" &&
+    parsed.pathname === "/api/library/open-sync-folder"
+  ) {
+    if (!appSettings.librarySyncFolder)
+      return sendJson(res, 400, {
+        error: "Папку синхронізації не налаштовано.",
+      });
     openFolder(appSettings.librarySyncFolder)
-      .then(() => sendJson(res, 200, { ok: true, folder: appSettings.librarySyncFolder }))
+      .then(() =>
+        sendJson(res, 200, { ok: true, folder: appSettings.librarySyncFolder }),
+      )
       .catch((error) => sendJson(res, 400, { error: error.message }));
     return;
   }
   if (req.method === "POST" && parsed.pathname === "/api/library/sync") {
     let body = "";
-    req.on("data", (chunk) => { body += chunk; });
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", () => {
       try {
         const action = body ? JSON.parse(body).action : "both";
@@ -2751,76 +4059,123 @@ const server = http.createServer((req, res) => {
       createZip(ASSET_CACHE_ROOT, zip);
       res.writeHead(200, {
         "Content-Type": "application/zip",
-        "Content-Disposition": 'attachment; filename="archivarix-asset-vault.zip"',
+        "Content-Disposition":
+          'attachment; filename="archivarix-asset-vault.zip"',
         "Content-Length": fs.statSync(zip).size,
       });
       fs.createReadStream(zip).pipe(res);
-    } catch (error) { sendJson(res, 500, { error: error.message }); }
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
     return;
   }
   if (req.method === "POST" && parsed.pathname === "/api/library/import") {
-    readRequestBuffer(req).then((buffer) => {
-      const temporary = path.join(ROOT, `.asset-import-${Date.now()}`);
-      try {
-        extractStoredZip(buffer, temporary);
-        const importedIndex = JSON.parse(fs.readFileSync(path.join(temporary, "index.json"), "utf8"));
-        const current = loadAssetCache();
-        fs.mkdirSync(ASSET_CACHE_ROOT, { recursive: true });
-        for (const entry of fs.readdirSync(temporary)) {
-          if (!entry.endsWith(".bin")) continue;
-          fs.copyFileSync(path.join(temporary, entry), path.join(ASSET_CACHE_ROOT, entry));
+    readRequestBuffer(req)
+      .then((buffer) => {
+        const temporary = path.join(ROOT, `.asset-import-${Date.now()}`);
+        try {
+          extractStoredZip(buffer, temporary);
+          const importedIndex = JSON.parse(
+            fs.readFileSync(path.join(temporary, "index.json"), "utf8"),
+          );
+          const current = loadAssetCache();
+          fs.mkdirSync(ASSET_CACHE_ROOT, { recursive: true });
+          for (const entry of fs.readdirSync(temporary)) {
+            if (!entry.endsWith(".bin")) continue;
+            fs.copyFileSync(
+              path.join(temporary, entry),
+              path.join(ASSET_CACHE_ROOT, entry),
+            );
+          }
+          saveAssetIndex({
+            version: 2,
+            urls: { ...current.urls, ...(importedIndex.urls || {}) },
+            signatures: {
+              ...(current.signatures || {}),
+              ...(importedIndex.signatures || {}),
+            },
+            assets: { ...current.assets, ...(importedIndex.assets || {}) },
+          });
+          sendJson(res, 200, { ok: true, stats: assetCacheStats() });
+        } catch (error) {
+          sendJson(res, 400, { error: error.message });
+        } finally {
+          fs.rmSync(temporary, { recursive: true, force: true });
         }
-        saveAssetIndex({
-          version: 2,
-          urls: { ...current.urls, ...(importedIndex.urls || {}) },
-          signatures: { ...(current.signatures || {}), ...(importedIndex.signatures || {}) },
-          assets: { ...current.assets, ...(importedIndex.assets || {}) },
-        });
-        sendJson(res, 200, { ok: true, stats: assetCacheStats() });
-      } catch (error) { sendJson(res, 400, { error: error.message }); }
-      finally { fs.rmSync(temporary, { recursive: true, force: true }); }
-    }).catch((error) => sendJson(res, 400, { error: error.message }));
+      })
+      .catch((error) => sendJson(res, 400, { error: error.message }));
     return;
   }
-  const libraryItemMatch = parsed.pathname.match(/^\/api\/library\/([a-z0-9_-]+)$/i);
+  const libraryItemMatch = parsed.pathname.match(
+    /^\/api\/library\/([a-z0-9_-]+)$/i,
+  );
   if (libraryItemMatch && req.method === "DELETE") {
     const index = loadAssetCache();
     const key = libraryItemMatch[1];
     delete index.assets[key];
-    for (const [url, value] of Object.entries(index.urls)) if (value === key) delete index.urls[url];
+    for (const [url, value] of Object.entries(index.urls))
+      if (value === key) delete index.urls[url];
     fs.rmSync(path.join(ASSET_CACHE_ROOT, `${key}.bin`), { force: true });
     saveAssetIndex(index);
     return sendJson(res, 200, { ok: true });
   }
   if (req.method === "POST" && parsed.pathname === "/api/jobs") {
     let body = "";
-    req.on("data", (chunk) => { body += chunk; if (body.length > 100000) req.destroy(); });
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 100000) req.destroy();
+    });
     req.on("end", () => {
       try {
         const options = JSON.parse(body);
         const id = crypto.randomUUID();
         const job = {
-          id, status: "queued", total: 0, completed: 0, failed: 0,
-          criticalFailed: 0, brokenReferences: 0, cacheHits: 0, cdnHits: 0,
-          logs: [], outputFolder: null, currentFile: null, phase: "queued",
-          currentStep: 0, currentStepTotal: 0, cancelled: false, error: null,
+          id,
+          status: "queued",
+          total: 0,
+          completed: 0,
+          failed: 0,
+          criticalFailed: 0,
+          brokenReferences: 0,
+          cacheHits: 0,
+          cdnHits: 0,
+          logs: [],
+          outputFolder: null,
+          currentFile: null,
+          phase: "queued",
+          currentStep: 0,
+          currentStepTotal: 0,
+          cancelled: false,
+          error: null,
         };
         jobs.set(id, job);
-        runJob(job, options).catch((error) => { job.status = "error"; job.error = error.message; log(job, `Помилка: ${error.message}`); });
+        runJob(job, options).catch((error) => {
+          job.status = "error";
+          job.error = error.message;
+          log(job, `Помилка: ${error.message}`);
+        });
         sendJson(res, 202, { id });
-      } catch (error) { sendJson(res, 400, { error: error.message }); }
+      } catch (error) {
+        sendJson(res, 400, { error: error.message });
+      }
     });
     return;
   }
   const match = parsed.pathname.match(/^\/api\/jobs\/([a-f0-9-]+)$/);
-  if (match && req.method === "GET") return jobs.has(match[1]) ? sendJson(res, 200, jobs.get(match[1])) : sendJson(res, 404, { error: "Не знайдено" });
+  if (match && req.method === "GET")
+    return jobs.has(match[1])
+      ? sendJson(res, 200, jobs.get(match[1]))
+      : sendJson(res, 404, { error: "Не знайдено" });
   if (match && req.method === "DELETE") {
-    const job = jobs.get(match[1]); if (job) job.cancelled = true;
+    const job = jobs.get(match[1]);
+    if (job) job.cancelled = true;
     return sendJson(res, job ? 200 : 404, { ok: Boolean(job) });
   }
   if (req.method === "POST" && parsed.pathname === "/api/open-folder") {
     let body = "";
-    req.on("data", (chunk) => { body += chunk; });
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", async () => {
       try {
         const folder = String(JSON.parse(body).folder || "");
@@ -2828,7 +4183,9 @@ const server = http.createServer((req, res) => {
         if (!fs.existsSync(target)) throw new Error("Папку не знайдено");
         await openFolder(target);
         sendJson(res, 200, { ok: true, path: target });
-      } catch (error) { sendJson(res, 400, { error: error.message }); }
+      } catch (error) {
+        sendJson(res, 400, { error: error.message });
+      }
     });
     return;
   }
@@ -2839,24 +4196,39 @@ fs.mkdirSync(OUTPUT_ROOT, { recursive: true });
 if (require.main === module) {
   server.on("error", (error) => {
     if (error.code === "EADDRINUSE") {
-      console.log(`Програма вже працює: http://${HOST}:${PORT}`);
-      if (process.env.NO_OPEN !== "1") void openFolder(`http://127.0.0.1:${PORT}`).catch(() => {});
+      console.log(`Програма вже працює: http://127.0.0.1:${PORT}`);
+
+      if (!process.env.RENDER && process.env.NO_OPEN !== "1") {
+        void openFolder(`http://127.0.0.1:${PORT}`).catch(() => {});
+      }
+
       return;
     }
+
     console.error(error);
     process.exitCode = 1;
   });
+
   server.listen(PORT, HOST, () => {
-    const url = `http://127.0.0.1:${PORT}`;
-    console.log(`773™ Site Restorer for Archivarix: ${url}`);
+    console.log(`773™ Site Restorer for Archivarix: http://${HOST}:${PORT}`);
+
     scheduleLibrarySync();
+
     if (appSettings.syncOnStart && appSettings.librarySyncFolder) {
       setTimeout(() => {
-        try { syncLibrary(appSettings.syncDirection || "both"); }
-        catch (error) { console.error(`Синхронізація бібліотеки: ${error.message}`); }
+        try {
+          syncLibrary(appSettings.syncDirection || "both");
+        } catch (error) {
+          console.error(`Синхронізація бібліотеки: ${error.message}`);
+        }
       }, 1500);
     }
-    if (process.env.NO_OPEN !== "1") void openFolder(url).catch((error) => console.error(`Не вдалося відкрити браузер: ${error.message}`));
+
+    if (!process.env.RENDER && process.env.NO_OPEN !== "1") {
+      void openFolder(`http://127.0.0.1:${PORT}`).catch((error) =>
+        console.error(`Не вдалося відкрити браузер: ${error.message}`),
+      );
+    }
   });
 }
 
