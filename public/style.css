@@ -4,7 +4,7 @@
   --panel: #15171a;
   --line: #2b2e33;
   --muted: #949ba6;
-  --accent: #d9ff43;
+  --accent: #1ec3e9;
   --text: #f3f5f7;
   --red: #ff6b70;
   --amber: #ffc857;
@@ -16,14 +16,14 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 80% 0, #23270f 0, transparent 30rem), var(--bg);
+  background: radial-gradient(circle at 80% 0, #141930 0, transparent 30rem), var(--bg);
   color: var(--text);
   font: 16px/1.5 Inter, "Segoe UI", sans-serif;
 }
 
 main { width: min(1040px, calc(100% - 32px)); margin: 32px auto; }
 header { display: flex; align-items: center; gap: 18px; margin-bottom: 24px; }
-.brand { width: 72px; height: 72px; display: grid; place-items: center; background: var(--accent); color: #111; font: 900 26px/1 monospace; transform: rotate(-4deg); }
+.brand { width: 72px; height: 72px; }
 h1 { margin: 2px 0 0; font-size: clamp(30px, 5vw, 48px); line-height: 1; letter-spacing: -.04em; }
 h1 em { font-style: normal; color: var(--accent); }
 .header-note { margin: 7px 0 0; color: var(--muted); }
@@ -40,7 +40,7 @@ h1 em { font-style: normal; color: var(--accent); }
 
 .tabs { display: flex; gap: 8px; margin-bottom: 14px; padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: #111316; }
 .tab-button { flex: 1; background: transparent; border-color: transparent; color: var(--muted); }
-.tab-button.active { background: #282d15; border-color: #46501d; color: var(--accent); }
+.tab-button.active { background: #141930; border-color: #4800ff; color: var(--accent); }
 .tab-button span { display: inline-grid; min-width: 22px; height: 22px; place-items: center; margin-left: 5px; border-radius: 11px; background: #282c31; color: var(--text); font-size: 11px; }
 .tab-page { display: none; }
 .tab-page.active { display: block; }
@@ -72,7 +72,7 @@ label small { font-weight: 400; color: #69717c; }
 .options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 18px; }
 .options .check { display: flex; align-items: center; gap: 10px; color: var(--text); }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
-.restore-primary { width: 100%; padding: 17px; font-size: 18px; box-shadow: 0 8px 28px #d9ff4322; }
+.restore-primary { width: 100%; padding: 17px; font-size: 18px; box-shadow: 0 8px 28px #634fff22; }
 
 .appearance {
   display: flex;

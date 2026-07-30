@@ -1,190 +1,414 @@
 <!doctype html>
 <html lang="uk">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#d9ff43">
-  <title>773™ Site Restorer for Archivarix</title>
-  <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <main>
-    <header>
-      <div class="brand">773™</div>
-      <div><p class="eyebrow">WAYBACK → STATIC SITE</p><h1>773 Site Restorer</h1><p class="header-note">Відновлення сайтів для Archivarix</p></div>
-    </header>
-    <nav class="tabs" aria-label="Розділи програми">
-      <button class="tab-button active" type="button" data-tab="restoreTab">Відновити</button>
-      <button class="tab-button" type="button" data-tab="projectsTab">Проєкти <span id="projectBadge">0</span></button>
-      <button class="tab-button" type="button" data-tab="libraryTab">Бібліотека <span id="libraryBadge">0</span></button>
-      <button class="tab-button" type="button" data-tab="settingsTab">Опції</button>
-    </nav>
-    <div id="restoreTab" class="tab-page active">
-    <section class="panel">
-      <div class="step"><b>1</b><span>Вкажіть сайт — решту програма зробить сама</span></div>
-      <form id="restoreForm">
-        <div class="primary-fields">
-          <label>Домен сайту<input id="domain" name="domain" placeholder="example.com" autocomplete="url" required></label>
-          <label>Період від <small>необов’язково</small><input id="fromDate" name="fromDate" type="date"></label>
-          <label>Період до <small>необов’язково</small><input id="toDate" name="toDate" type="date"></label>
-        </div>
-        <details class="advanced">
-          <summary>Розширені налаштування</summary>
-          <div class="options">
-        <label>Повнота відновлення<select name="completeness"><option value="maximum">Максимальна — ±5 років, до 10 копій</option><option value="balanced">Збалансована — ±1 рік, до 5 копій</option><option value="quick">Швидка — до 3 копій</option></select></label>
-        <label>Максимум файлів<input name="limit" type="number" min="10" max="10000" value="2000"></label>
-        <label>Паралельні завантаження<select name="concurrency"><option>3</option><option>2</option><option>1</option><option>4</option><option>5</option><option>6</option></select></label>
-        <label class="check"><input name="includeSubdomains" type="checkbox"><span>Додати субдомени</span></label>
-        <label class="check"><input name="useAssetCache" type="checkbox" checked><span>Локальний склад CSS/JS та плагінів</span></label>
-        <label class="check"><input name="allowCdnFallback" type="checkbox" checked><span>Дозавантажувати точні версії з довірених CDN</span></label>
-        <label class="check"><input name="createZip" type="checkbox" checked><span>Створити ZIP для імпорту</span></label>
-          </div>
-        </details>
-        <button id="restoreButton" class="restore-primary">Відновити сайт</button>
-      </form>
-      <p id="searchStatus" class="muted">Програма автоматично знайде найкращу архівну дату.</p>
-      <p id="vaultStatus" class="muted" hidden>Локальний склад ресурсів: перевіряю…</p>
-      <div id="appearance" class="appearance" hidden>
-        <div><small>Архівне джерело вигляду</small><strong id="chosenDate"></strong><code id="chosenTimestamp"></code></div>
-        <a id="previewLink" target="_blank" rel="noopener">Переглянути, як виглядав сайт ↗</a>
-      </div>
-    </section>
-    <section id="progressPanel" class="panel activity-panel" hidden>
-      <div class="statusline">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#d9ff43" />
+    <title>Site Restorer for Archivarix</title>
+    <link rel="icon" href="/app-icon.png" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <img class="brand" src="/app-icon.png" alt="logo" />
         <div>
-          <p class="eyebrow">ЖУРНАЛ РОБОТИ</p>
-          <h2 id="statusText">Очікую завдання</h2>
-          <p id="stageHint" class="muted">Тут з’являться всі етапи, попередження та результати.</p>
+          <p class="eyebrow">WAYBACK → STATIC SITE</p>
+          <h1>Site Restorer</h1>
+          <p class="header-note">Відновлення сайтів для Archivarix</p>
         </div>
-        <div class="live-status">
-          <span id="liveDot" class="live-dot"></span>
-          <span id="elapsed">00:00</span>
-          <strong id="counter">0 / 0</strong>
-        </div>
-      </div>
-      <progress id="progress" max="1" value="0"></progress>
-      <div class="metrics" aria-label="Статистика завдання">
-        <div><small>Завантажено</small><strong id="metricDownloaded">0</strong></div>
-        <div><small>Зі складу</small><strong id="metricCache">0</strong></div>
-        <div><small>CDN</small><strong id="metricCdn">0</strong></div>
-        <div><small>Помилки</small><strong id="metricErrors">0</strong></div>
-      </div>
-      <div class="log-toolbar">
-        <span id="logCount">0 повідомлень</span>
-        <div><button id="copyLogs" type="button" class="mini ghost">Копіювати журнал</button><button id="clearLogs" type="button" class="mini ghost">Очистити</button></div>
-      </div>
-      <div id="logs" class="logs" role="log" aria-live="polite"></div>
-      <div class="actions"><button id="openFolder" hidden>Відкрити результат</button><button id="cancel" class="ghost" hidden>Зупинити</button></div>
-    </section>
-    </div>
-
-    <div id="projectsTab" class="tab-page">
-      <section class="panel">
-        <div class="section-head">
-          <div><p class="eyebrow">РЕЗУЛЬТАТИ</p><h2>Готові проєкти</h2><p id="projectsPath" class="muted"></p></div>
-          <div class="head-actions"><input id="projectImportFile" type="file" accept=".zip" hidden><button id="importProject" type="button" class="ghost">Імпортувати проєкт</button><button id="refreshProjects" type="button" class="ghost">Оновити</button></div>
-        </div>
-        <div id="projectsEmpty" class="empty-state" hidden>Ще немає готових відновлень.</div>
-        <div id="projectsList" class="projects-list"></div>
-      </section>
-    </div>
-
-    <div id="libraryTab" class="tab-page">
-      <section class="panel">
-        <div class="section-head">
-          <div><p class="eyebrow">АВТОРОЗШИРЕННЯ CSS/JS</p><h2>Спільна бібліотека</h2><p id="librarySummary" class="muted"></p></div>
-          <div class="head-actions">
-            <button id="syncLibrary" type="button">Синхронізувати</button>
-            <button id="pullLibrary" type="button" class="ghost">Отримати зміни</button>
-            <details class="action-menu">
-              <summary>Інші дії</summary>
-              <div class="action-menu-panel">
-                <a class="button-link ghost" href="/api/library/export">Експортувати ZIP</a>
-                <input id="libraryImportFile" type="file" accept=".zip" hidden>
-                <button id="importLibrary" type="button" class="ghost">Імпортувати ZIP</button>
-                <button id="refreshLibrary" type="button" class="ghost">Оновити список</button>
+      </header>
+      <nav class="tabs" aria-label="Розділи програми">
+        <button class="tab-button active" type="button" data-tab="restoreTab">
+          Відновити
+        </button>
+        <button class="tab-button" type="button" data-tab="projectsTab">
+          Проєкти <span id="projectBadge">0</span>
+        </button>
+        <button class="tab-button" type="button" data-tab="libraryTab">
+          Бібліотека <span id="libraryBadge">0</span>
+        </button>
+        <button class="tab-button" type="button" data-tab="settingsTab">
+          Опції
+        </button>
+      </nav>
+      <div id="restoreTab" class="tab-page active">
+        <section class="panel">
+          <div class="step">
+            <b>1</b><span>Вкажіть сайт — решту програма зробить сама</span>
+          </div>
+          <form id="restoreForm">
+            <div class="primary-fields">
+              <label
+                >Домен сайту<input
+                  id="domain"
+                  name="domain"
+                  placeholder="example.com"
+                  autocomplete="url"
+                  required
+              /></label>
+              <label
+                >Період від <small>необов’язково</small
+                ><input id="fromDate" name="fromDate" type="date"
+              /></label>
+              <label
+                >Період до <small>необов’язково</small
+                ><input id="toDate" name="toDate" type="date"
+              /></label>
+            </div>
+            <details class="advanced">
+              <summary>Розширені налаштування</summary>
+              <div class="options">
+                <label
+                  >Повнота відновлення<select name="completeness">
+                    <option value="maximum">
+                      Максимальна — ±5 років, до 10 копій
+                    </option>
+                    <option value="balanced">
+                      Збалансована — ±1 рік, до 5 копій
+                    </option>
+                    <option value="quick">Швидка — до 3 копій</option>
+                  </select></label
+                >
+                <label
+                  >Максимум файлів<input
+                    name="limit"
+                    type="number"
+                    min="10"
+                    max="10000"
+                    value="2000"
+                /></label>
+                <label
+                  >Паралельні завантаження<select name="concurrency">
+                    <option>3</option>
+                    <option>2</option>
+                    <option>1</option>
+                    <option>4</option>
+                    <option>5</option>
+                    <option>6</option>
+                  </select></label
+                >
+                <label class="check"
+                  ><input name="includeSubdomains" type="checkbox" /><span
+                    >Додати субдомени</span
+                  ></label
+                >
+                <label class="check"
+                  ><input name="useAssetCache" type="checkbox" checked /><span
+                    >Локальний склад CSS/JS та плагінів</span
+                  ></label
+                >
+                <label class="check"
+                  ><input
+                    name="allowCdnFallback"
+                    type="checkbox"
+                    checked
+                  /><span
+                    >Дозавантажувати точні версії з довірених CDN</span
+                  ></label
+                >
+                <label class="check"
+                  ><input name="createZip" type="checkbox" checked /><span
+                    >Створити ZIP для імпорту</span
+                  ></label
+                >
               </div>
             </details>
-          </div>
-        </div>
-        <div id="librarySyncStatus" class="sync-status">Синхронізацію ще не налаштовано.</div>
-        <p class="muted">Знайдені CSS, JS, шрифти та файли плагінів автоматично додаються сюди й повторно використовуються в наступних проєктах.</p>
-        <div id="libraryFamilies" class="family-chips"></div>
-        <div class="library-controls">
-          <input id="librarySearch" type="search" placeholder="Знайти файл, URL або бібліотеку…">
-          <select id="libraryFamilyFilter" aria-label="Фільтр бібліотеки"><option value="">Усі типи</option></select>
-          <span id="libraryVisibleCount" class="muted"></span>
-        </div>
-        <div id="libraryList" class="library-list"></div>
-      </section>
-    </div>
-
-    <div id="settingsTab" class="tab-page">
-      <section class="panel">
-        <p class="eyebrow">ПАРАМЕТРИ</p>
-        <div class="section-head"><h2>Налаштування програми</h2><a class="button-link ghost" href="/api/manual" target="_blank">Відкрити посібник</a></div>
-        <form id="settingsForm" class="settings-form">
-          <label class="wide">Папка для відновлених сайтів
-            <input name="outputRoot" placeholder="Залиште порожнім для стандартної папки">
-            <small id="resolvedOutputRoot"></small>
-          </label>
-          <fieldset class="wide sync-settings">
-            <legend>Google Drive — синхронізація бібліотеки</legend>
-            <label>Спільна локальна папка
-              <div class="input-actions">
-                <input name="librarySyncFolder" placeholder="G:\Мій диск\773 Library або /Users/name/Google Drive/773 Library">
-                <button id="chooseSyncFolder" type="button" class="ghost">Обрати…</button>
-              </div>
-              <small>Папка має бути доступна через Google Drive для комп’ютера або інший сумісний клієнт.</small>
-            </label>
-            <label>Назва цього комп’ютера
-              <input name="syncDeviceName" maxlength="80" placeholder="Наприклад: Офіс — Windows">
-            </label>
-            <label>Напрям автоматичної синхронізації
-              <select name="syncDirection">
-                <option value="both">Передавати й отримувати</option>
-                <option value="pull">Лише отримувати</option>
-                <option value="push">Лише передавати</option>
-              </select>
-            </label>
-            <label>Періодична синхронізація
-              <select name="syncIntervalMinutes">
-                <option value="0">Вимкнено</option>
-                <option value="5">Кожні 5 хвилин</option>
-                <option value="15">Кожні 15 хвилин</option>
-                <option value="30">Кожні 30 хвилин</option>
-                <option value="60">Щогодини</option>
-                <option value="360">Кожні 6 годин</option>
-              </select>
-            </label>
-            <label class="check"><input name="syncOnStart" type="checkbox"><span>Синхронізувати після запуску програми</span></label>
-            <label class="check"><input name="syncAfterRestore" type="checkbox"><span>Синхронізувати після кожного відновлення</span></label>
-            <div class="sync-setup-actions">
-              <button id="testSyncFolder" type="button" class="ghost">Перевірити підключення</button>
-              <button id="openSyncFolder" type="button" class="ghost">Відкрити папку</button>
+            <button id="restoreButton" class="restore-primary">
+              Відновити сайт
+            </button>
+          </form>
+          <p id="searchStatus" class="muted">
+            Програма автоматично знайде найкращу архівну дату.
+          </p>
+          <p id="vaultStatus" class="muted" hidden>
+            Локальний склад ресурсів: перевіряю…
+          </p>
+          <div id="appearance" class="appearance" hidden>
+            <div>
+              <small>Архівне джерело вигляду</small
+              ><strong id="chosenDate"></strong
+              ><code id="chosenTimestamp"></code>
             </div>
-            <small id="syncSettingsStatus">Паролі, Google-токени та ключі не зберігаються.</small>
-          </fieldset>
-          <label>Стандартна повнота<select name="completeness"><option value="maximum">Максимальна</option><option value="balanced">Збалансована</option><option value="quick">Швидка</option></select></label>
-          <label>Стандартний ліміт<input name="limit" type="number" min="10" max="10000"></label>
-          <label>Паралельні завантаження<input name="concurrency" type="number" min="1" max="6"></label>
-          <label class="check"><input name="createZip" type="checkbox"><span>Створювати ZIP</span></label>
-          <label class="check"><input name="useAssetCache" type="checkbox"><span>Використовувати локальний склад</span></label>
-          <label class="check"><input name="allowCdnFallback" type="checkbox"><span>Дозволити версіоновані CDN</span></label>
-          <button type="submit">Зберегти налаштування</button>
-        </form>
-        <p id="settingsStatus" class="muted"></p>
-      </section>
-    </div>
-  </main>
-  <dialog id="reportDialog">
-    <div class="dialog-head"><h2 id="reportTitle">Звіт проєкту</h2><button id="closeReport" type="button" class="ghost">Закрити</button></div>
-    <div id="reportSummary" class="report-summary"></div>
-    <div class="log-toolbar"><strong>Помилки та відсутні залежності</strong><button id="copyReport" type="button" class="mini ghost">Копіювати</button></div>
-    <pre id="reportContent" class="report-content"></pre>
-  </dialog>
-  <footer>© 2026 773™. Усі права захищено.</footer>
-  <script src="app.js"></script>
-</body>
+            <a id="previewLink" target="_blank" rel="noopener"
+              >Переглянути, як виглядав сайт ↗</a
+            >
+          </div>
+        </section>
+        <section id="progressPanel" class="panel activity-panel" hidden>
+          <div class="statusline">
+            <div>
+              <p class="eyebrow">ЖУРНАЛ РОБОТИ</p>
+              <h2 id="statusText">Очікую завдання</h2>
+              <p id="stageHint" class="muted">
+                Тут з’являться всі етапи, попередження та результати.
+              </p>
+            </div>
+            <div class="live-status">
+              <span id="liveDot" class="live-dot"></span>
+              <span id="elapsed">00:00</span>
+              <strong id="counter">0 / 0</strong>
+            </div>
+          </div>
+          <progress id="progress" max="1" value="0"></progress>
+          <div class="metrics" aria-label="Статистика завдання">
+            <div>
+              <small>Завантажено</small><strong id="metricDownloaded">0</strong>
+            </div>
+            <div>
+              <small>Зі складу</small><strong id="metricCache">0</strong>
+            </div>
+            <div><small>CDN</small><strong id="metricCdn">0</strong></div>
+            <div>
+              <small>Помилки</small><strong id="metricErrors">0</strong>
+            </div>
+          </div>
+          <div class="log-toolbar">
+            <span id="logCount">0 повідомлень</span>
+            <div>
+              <button id="copyLogs" type="button" class="mini ghost">
+                Копіювати журнал</button
+              ><button id="clearLogs" type="button" class="mini ghost">
+                Очистити
+              </button>
+            </div>
+          </div>
+          <div id="logs" class="logs" role="log" aria-live="polite"></div>
+          <div class="actions">
+            <button id="openFolder" hidden>Відкрити результат</button
+            ><button id="cancel" class="ghost" hidden>Зупинити</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="projectsTab" class="tab-page">
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">РЕЗУЛЬТАТИ</p>
+              <h2>Готові проєкти</h2>
+              <p id="projectsPath" class="muted"></p>
+            </div>
+            <div class="head-actions">
+              <input
+                id="projectImportFile"
+                type="file"
+                accept=".zip"
+                hidden
+              /><button id="importProject" type="button" class="ghost">
+                Імпортувати проєкт</button
+              ><button id="refreshProjects" type="button" class="ghost">
+                Оновити
+              </button>
+            </div>
+          </div>
+          <div id="projectsEmpty" class="empty-state" hidden>
+            Ще немає готових відновлень.
+          </div>
+          <div id="projectsList" class="projects-list"></div>
+        </section>
+      </div>
+
+      <div id="libraryTab" class="tab-page">
+        <section class="panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">АВТОРОЗШИРЕННЯ CSS/JS</p>
+              <h2>Спільна бібліотека</h2>
+              <p id="librarySummary" class="muted"></p>
+            </div>
+            <div class="head-actions">
+              <button id="syncLibrary" type="button">Синхронізувати</button>
+              <button id="pullLibrary" type="button" class="ghost">
+                Отримати зміни
+              </button>
+              <details class="action-menu">
+                <summary>Інші дії</summary>
+                <div class="action-menu-panel">
+                  <a class="button-link ghost" href="/api/library/export"
+                    >Експортувати ZIP</a
+                  >
+                  <input
+                    id="libraryImportFile"
+                    type="file"
+                    accept=".zip"
+                    hidden
+                  />
+                  <button id="importLibrary" type="button" class="ghost">
+                    Імпортувати ZIP
+                  </button>
+                  <button id="refreshLibrary" type="button" class="ghost">
+                    Оновити список
+                  </button>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div id="librarySyncStatus" class="sync-status">
+            Синхронізацію ще не налаштовано.
+          </div>
+          <p class="muted">
+            Знайдені CSS, JS, шрифти та файли плагінів автоматично додаються
+            сюди й повторно використовуються в наступних проєктах.
+          </p>
+          <div id="libraryFamilies" class="family-chips"></div>
+          <div class="library-controls">
+            <input
+              id="librarySearch"
+              type="search"
+              placeholder="Знайти файл, URL або бібліотеку…"
+            />
+            <select id="libraryFamilyFilter" aria-label="Фільтр бібліотеки">
+              <option value="">Усі типи</option>
+            </select>
+            <span id="libraryVisibleCount" class="muted"></span>
+          </div>
+          <div id="libraryList" class="library-list"></div>
+        </section>
+      </div>
+
+      <div id="settingsTab" class="tab-page">
+        <section class="panel">
+          <p class="eyebrow">ПАРАМЕТРИ</p>
+          <div class="section-head">
+            <h2>Налаштування програми</h2>
+            <a class="button-link ghost" href="/api/manual" target="_blank"
+              >Відкрити посібник</a
+            >
+          </div>
+          <form id="settingsForm" class="settings-form">
+            <label class="wide"
+              >Папка для відновлених сайтів
+              <input
+                name="outputRoot"
+                placeholder="Залиште порожнім для стандартної папки"
+              />
+              <small id="resolvedOutputRoot"></small>
+            </label>
+            <fieldset class="wide sync-settings">
+              <legend>Google Drive — синхронізація бібліотеки</legend>
+              <label
+                >Спільна локальна папка
+                <div class="input-actions">
+                  <input
+                    name="librarySyncFolder"
+                    placeholder="G:\Мій диск\Library або /Users/name/Google Drive/Library"
+                  />
+                  <button id="chooseSyncFolder" type="button" class="ghost">
+                    Обрати…
+                  </button>
+                </div>
+                <small
+                  >Папка має бути доступна через Google Drive для комп’ютера або
+                  інший сумісний клієнт.</small
+                >
+              </label>
+              <label
+                >Назва цього комп’ютера
+                <input
+                  name="syncDeviceName"
+                  maxlength="80"
+                  placeholder="Наприклад: Офіс — Windows"
+                />
+              </label>
+              <label
+                >Напрям автоматичної синхронізації
+                <select name="syncDirection">
+                  <option value="both">Передавати й отримувати</option>
+                  <option value="pull">Лише отримувати</option>
+                  <option value="push">Лише передавати</option>
+                </select>
+              </label>
+              <label
+                >Періодична синхронізація
+                <select name="syncIntervalMinutes">
+                  <option value="0">Вимкнено</option>
+                  <option value="5">Кожні 5 хвилин</option>
+                  <option value="15">Кожні 15 хвилин</option>
+                  <option value="30">Кожні 30 хвилин</option>
+                  <option value="60">Щогодини</option>
+                  <option value="360">Кожні 6 годин</option>
+                </select>
+              </label>
+              <label class="check"
+                ><input name="syncOnStart" type="checkbox" /><span
+                  >Синхронізувати після запуску програми</span
+                ></label
+              >
+              <label class="check"
+                ><input name="syncAfterRestore" type="checkbox" /><span
+                  >Синхронізувати після кожного відновлення</span
+                ></label
+              >
+              <div class="sync-setup-actions">
+                <button id="testSyncFolder" type="button" class="ghost">
+                  Перевірити підключення
+                </button>
+                <button id="openSyncFolder" type="button" class="ghost">
+                  Відкрити папку
+                </button>
+              </div>
+              <small id="syncSettingsStatus"
+                >Паролі, Google-токени та ключі не зберігаються.</small
+              >
+            </fieldset>
+            <label
+              >Стандартна повнота<select name="completeness">
+                <option value="maximum">Максимальна</option>
+                <option value="balanced">Збалансована</option>
+                <option value="quick">Швидка</option>
+              </select></label
+            >
+            <label
+              >Стандартний ліміт<input
+                name="limit"
+                type="number"
+                min="10"
+                max="10000"
+            /></label>
+            <label
+              >Паралельні завантаження<input
+                name="concurrency"
+                type="number"
+                min="1"
+                max="6"
+            /></label>
+            <label class="check"
+              ><input name="createZip" type="checkbox" /><span
+                >Створювати ZIP</span
+              ></label
+            >
+            <label class="check"
+              ><input name="useAssetCache" type="checkbox" /><span
+                >Використовувати локальний склад</span
+              ></label
+            >
+            <label class="check"
+              ><input name="allowCdnFallback" type="checkbox" /><span
+                >Дозволити версіоновані CDN</span
+              ></label
+            >
+            <button type="submit">Зберегти налаштування</button>
+          </form>
+          <p id="settingsStatus" class="muted"></p>
+        </section>
+      </div>
+    </main>
+    <dialog id="reportDialog">
+      <div class="dialog-head">
+        <h2 id="reportTitle">Звіт проєкту</h2>
+        <button id="closeReport" type="button" class="ghost">Закрити</button>
+      </div>
+      <div id="reportSummary" class="report-summary"></div>
+      <div class="log-toolbar">
+        <strong>Помилки та відсутні залежності</strong
+        ><button id="copyReport" type="button" class="mini ghost">
+          Копіювати
+        </button>
+      </div>
+      <pre id="reportContent" class="report-content"></pre>
+    </dialog>
+    <footer>© 2026 Site Restorer. Усі права захищено.</footer>
+    <script src="app.js"></script>
+  </body>
 </html>
